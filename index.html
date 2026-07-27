@@ -271,17 +271,20 @@ function drawBreakGrid() {
 // Views + state — each sport now has multiple visualizations
 // ==================================================================
 const VIEW_META = {
-  gravity: { sport:'nba', sub:'Scoring Gravity', title:'Where a scorer is deadly' },
-  diet:    { sport:'nba', sub:'Shot Diet',       title:'What kinds of shots he takes' },
-  arsenal: { sport:'mlb', sub:'Pitch Arsenal',   title:'How a pitcher moves the ball' },
-  nasty:   { sport:'mlb', sub:'Nastiness',       title:'Which pitches fool batters' },
-  spray:   { sport:'mlb', sub:'Spray Chart',     title:'Where a hitter hits it — matchup' },
+  gravity:   { sport:'nba', sub:'Scoring Gravity',   title:'Where a scorer is deadly' },
+  diet:      { sport:'nba', sub:'Shot Diet',         title:'What kinds of shots he takes' },
+  range:     { sport:'nba', sub:'Range',             title:'How far he shoots — and how well' },
+  arsenal:   { sport:'mlb', sub:'Pitch Arsenal',     title:'How a pitcher moves the ball' },
+  nasty:     { sport:'mlb', sub:'Nastiness',         title:'Which pitches fool batters' },
+  evolution: { sport:'mlb', sub:'Arsenal Evolution', title:'How his pitch mix changed' },
+  spray:     { sport:'mlb', sub:'Spray Chart',       title:'Where a hitter hits it — matchup' },
+  damage:    { sport:'mlb', sub:'Damage',            title:'Where he does his damage' },
 };
-const SPORT_VIEWS = { nba:['gravity','diet'], mlb:['arsenal','nasty','spray'] };
+const SPORT_VIEWS = { nba:['gravity','diet','range'], mlb:['arsenal','nasty','evolution','spray','damage'] };
 const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)' };
 
 // Which kind of player each view is about (chips + defaults follow this).
-const ENTITY = { gravity:'scorer', diet:'scorer', arsenal:'pitcher', nasty:'pitcher', spray:'hitter' };
+const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter' };
 const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger' };
 
 let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', items:[], t0:0, raf:0 };
@@ -453,6 +456,104 @@ if (window.SIGHTLINE_NBA && window.SIGHTLINE_NBA.players && Object.keys(window.S
   if (badge) badge.textContent = 'REAL data — NBA shots + MLB Statcast';
 }
 
+// ================= NEW VIEWS =================
+
+// ---- NBA "Range": shot frequency + efficiency by distance from the hoop ----
+const RANGE_BIN = 2, RANGE_MAX = 30, RANGE_N = RANGE_MAX / RANGE_BIN;
+function buildRange(name) {
+  const d = nbaData(name);
+  const bins = Array.from({length:RANGE_N}, (_,i)=>({ d0:i*RANGE_BIN, n:0, ppsSum:0, fgSum:0 }));
+  const src = d ? d.shots : buildNBA(name).pts.map(p=>[p.x,p.y,p.pps,p.fg]);
+  for (const s of src) {
+    const dist = Math.sqrt(s[0]*s[0] + s[1]*s[1]);
+    const b = bins[Math.min(RANGE_N-1, Math.floor(dist/RANGE_BIN))];
+    b.n++; b.ppsSum+=s[2]; b.fgSum+=s[3];
+  }
+  const total = src.length || 1;
+  return bins.map(b=>({ d0:b.d0, freq:b.n/total, pps:b.n?b.ppsSum/b.n:0, fg:b.n?b.fgSum/b.n:0, n:b.n }));
+}
+function drawRange(prog) {
+  const bins = state.items, n = bins.length;
+  if (!n || bins[0].freq===undefined) return; // stale items during a view switch
+  const padL=44, padR=22, padT=28, padB=46, plotW=W-padL-padR, plotH=H-padT-padB;
+  const maxFreq = Math.max(...bins.map(b=>b.freq), 0.01), bw = plotW/n;
+  ctx.save();
+  const x3 = padL + (23.75/RANGE_MAX)*plotW; // 3-point line marker
+  ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(x3,padT); ctx.lineTo(x3,H-padB); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  ctx.fillText('3PT line', x3, padT-6);
+  bins.forEach((b,i)=>{
+    const h=(b.freq/maxFreq)*plotH*prog, x=padL+i*bw, y=(H-padB)-h;
+    ctx.fillStyle=ppsColor(b.pps); ctx.shadowColor=ppsColor(b.pps); ctx.shadowBlur=b.n?10:0;
+    rr(x+1.5, y, bw-3, Math.max(0,h), 3); ctx.fill(); ctx.shadowBlur=0;
+    b._rect=[x, y, bw, h];
+  });
+  ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  for (let ft=0; ft<=RANGE_MAX; ft+=10){ ctx.fillText(ft+' ft', padL+(ft/RANGE_MAX)*plotW, H-padB+16); }
+  ctx.restore();
+}
+
+// ---- MLB "Arsenal Evolution": pitch-mix usage stacked by season ----
+function buildEvolution(name) {
+  const p = MLB_PLAYERS[name];
+  if (!p || !p.seasons) return [];
+  return Object.keys(p.seasons).sort().map(y=>({
+    year: y,
+    pitches: p.seasons[y].map(pi=>({ t:pi.t, use:pi.use, color:MLB_TYPES[pi.t]||'#9aa6b2' })).sort((a,b)=>b.use-a.use),
+  }));
+}
+function drawEvolution(prog) {
+  const years = state.items, n = years.length;
+  if (!n || !years[0] || !years[0].pitches) return; // stale items during a view switch
+  const padL=44, padR=22, padT=28, padB=44, plotW=W-padL-padR, plotH=H-padT-padB;
+  const bw = Math.min(96, plotW/n*0.62), gap=(plotW - bw*n)/(n+1);
+  ctx.save();
+  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='right';
+  [0,50,100].forEach(pct=>{ const y=(H-padB)-(pct/100)*plotH; ctx.fillText(pct+'%', padL-6, y+3); });
+  years.forEach((yr,i)=>{
+    const x=padL+gap+i*(bw+gap); let acc=0;
+    yr.pitches.forEach(pi=>{
+      const segH=pi.use*plotH*prog, y=(H-padB)-acc-segH;
+      ctx.fillStyle=pi.color; ctx.fillRect(x, y, bw, segH);
+      if (segH>16){ ctx.fillStyle='rgba(6,12,20,0.85)'; ctx.font='700 10px ui-sans-serif'; ctx.textAlign='center';
+        ctx.fillText(Math.round(pi.use*100)+'%', x+bw/2, y+segH/2+3); ctx.fillStyle=pi.color; }
+      acc+=segH;
+    });
+    ctx.fillStyle='rgba(255,255,255,0.65)'; ctx.font='12px ui-sans-serif, system-ui'; ctx.textAlign='center';
+    ctx.fillText(yr.year, x+bw/2, H-padB+18);
+  });
+  ctx.restore();
+}
+
+// ---- MLB "Damage": outcome mix by field (Left / Center / Right) ----
+function buildDamage(name, key) {
+  const balls = buildSpray(name, key);
+  const F = ['Left','Center','Right'];
+  const agg = Object.fromEntries(F.map(f=>[f,{ Out:0, Single:0, Double:0, 'Home run':0, total:0 }]));
+  for (const b of balls){ const f = b.a<-15?'Left':b.a>15?'Right':'Center'; agg[f][b.type]++; agg[f].total++; }
+  return F.map(f=>({ field:f, ...agg[f] }));
+}
+function drawDamage(prog) {
+  const fields = state.items;
+  if (!fields.length || fields[0].field===undefined) return; // stale items during a view switch
+  const padL=96, padR=68, padT=30, gap=26, rowH=(H-padT*2-gap*2)/3, trackW=W-padL-padR;
+  const maxTotal = Math.max(...fields.map(f=>f.total), 1);
+  const order = [['Out',SPRAY.out],['Single',SPRAY.single],['Double',SPRAY.double],['Home run',SPRAY.hr]];
+  ctx.save(); ctx.textBaseline='middle';
+  fields.forEach((f,i)=>{
+    const y=padT+i*(rowH+gap);
+    ctx.fillStyle='#cfd6e6'; ctx.font='600 15px ui-sans-serif, system-ui'; ctx.textAlign='right';
+    ctx.fillText(f.field+' field', padL-14, y+rowH/2);
+    const barW=(f.total/maxTotal)*trackW*prog; let acc=0;
+    order.forEach(([type,color])=>{ const seg=f.total?(f[type]/f.total)*barW:0; ctx.fillStyle=color; ctx.fillRect(padL+acc, y, seg, rowH); acc+=seg; });
+    ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 14px ui-sans-serif, system-ui';
+    ctx.fillText(f.total+' balls · '+f['Home run']+' HR', padL+barW+10, y+rowH/2);
+    f._rect=[padL, y, trackW, rowH];
+  });
+  ctx.restore();
+}
+
 // ---- data builders for the new views ----
 function buildDiet(name) {
   const p = NBA_PLAYERS[name];
@@ -486,11 +587,14 @@ function layoutScatter() {
 
 function rebuild() {
   const v = state.view;
-  state.items = v==='gravity' ? buildNBA(state.player).pts
-              : v==='arsenal' ? buildMLB(state.player)
-              : v==='diet'    ? buildDiet(state.player)
-              : v==='nasty'   ? buildNasty(state.player)
-              :                 buildSpray(state.player, state.vsPitcher);
+  state.items = v==='gravity'   ? buildNBA(state.player).pts
+              : v==='arsenal'   ? buildMLB(state.player)
+              : v==='diet'      ? buildDiet(state.player)
+              : v==='nasty'     ? buildNasty(state.player)
+              : v==='spray'     ? buildSpray(state.player, state.vsPitcher)
+              : v==='range'     ? buildRange(state.player)
+              : v==='evolution' ? buildEvolution(state.player)
+              :                   buildDamage(state.player, state.vsPitcher);
   if (isScatter()) layoutScatter();
   state.t0 = performance.now();
   cancelAnimationFrame(state.raf);
@@ -503,10 +607,14 @@ function animate() {
 }
 function render(prog) {
   ctx.clearRect(0,0,W,H);
+  const v = state.view;
   if (isScatter()) drawScatter(prog);
-  else if (state.view==='diet') drawDiet(prog);
-  else if (state.view==='nasty') drawNasty(prog);
-  else drawSpray(prog);
+  else if (v==='diet') drawDiet(prog);
+  else if (v==='nasty') drawNasty(prog);
+  else if (v==='spray') drawSpray(prog);
+  else if (v==='range') drawRange(prog);
+  else if (v==='evolution') drawEvolution(prog);
+  else drawDamage(prog);
 }
 
 // ---- Scoring Gravity + Pitch Arsenal (point clouds) ----
@@ -586,7 +694,7 @@ function drawNasty(prog) {
 
 function resize() {
   const holderW = canvas.parentElement.clientWidth;
-  const asp = { gravity:0.82, diet:0.5, arsenal:0.72, nasty:0.62, spray:0.92 }[state.view];
+  const asp = { gravity:0.82, diet:0.5, arsenal:0.72, nasty:0.62, spray:0.92, range:0.6, evolution:0.6, damage:0.5 }[state.view];
   W = holderW; H = Math.round(holderW*asp);
   canvas.width = W*DPR; canvas.height = H*DPR; canvas.style.height = H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -618,7 +726,7 @@ function setInsight() {
     el.innerHTML = `Each circle is one of <span class="k">${state.player}</span>'s pitches. ` +
       `The <b>higher up</b> it sits, the more batters swing and miss. The <b>farther right</b>, the faster it is. ` +
       `So pitches in the <b>top-right corner are the nastiest</b>, and a bigger circle means he throws it more. His filthiest pitch is his <b>${best.t}</b>.`;
-  } else {
+  } else if (v==='spray') {
     const hits = state.items.filter(b=>b.type!=='Out');
     const meanA = hits.length ? hits.reduce((s,b)=>s+b.a,0)/hits.length : 0;
     const field = meanA < -8 ? 'left field' : meanA > 8 ? 'right field' : 'up the middle';
@@ -629,6 +737,31 @@ function setInsight() {
     el.innerHTML = `Every dot is a ball <span class="k">${state.player}</span> hit against <span class="k">${matchLabel}</span>. ` +
       `<b style="color:#38a1ff">Blue</b> = single, <b style="color:#42d98a">green</b> = double, <b style="color:#ffd24a">gold</b> = home run, gray = out. ` +
       `He does the most damage to <b>${field}</b>${hr?`, including <b>${hr}</b> home run${hr>1?'s':''}`:''}.`;
+  } else if (v==='range') {
+    const bins = state.items;
+    const peak = [...bins].sort((a,b)=>b.freq-a.freq)[0];
+    const from3 = bins.filter(b=>b.d0>=23).reduce((s,b)=>s+b.freq,0);
+    el.innerHTML = `This shows how far from the basket <span class="k">${state.player}</span> shoots. ` +
+      `<b>Taller bars</b> = he shoots more from that distance; <b>color</b> shows how good he is there (red = great). ` +
+      `Most of his shots come from around <b>${peak.d0}–${peak.d0+RANGE_BIN} feet</b>, and <b>${Math.round(from3*100)}%</b> come from three-point range or deeper.`;
+  } else if (v==='evolution') {
+    const yrs = state.items;
+    if (!yrs.length) { el.innerHTML = `No multi-season data for this pitcher yet.`; }
+    else {
+      const first=yrs[0], last=yrs[yrs.length-1], topLast=last.pitches[0];
+      el.innerHTML = `How <span class="k">${state.player}</span>'s pitch mix changed from <b>${first.year}</b> to <b>${last.year}</b>. ` +
+        `Each bar is one season; the colored chunks show how often he threw each pitch. ` +
+        `In ${last.year} his go-to was the <b>${topLast.t}</b> (${Math.round(topLast.use*100)}% of his pitches).`;
+    }
+  } else {
+    const fields = state.items;
+    const best = [...fields].sort((a,b)=>b['Home run']-a['Home run'])[0];
+    const matchLabel = window.__REAL_HITTERS
+      ? ({all:'all pitchers', L:'lefties', R:'righties'}[state.vsPitcher] || 'all pitchers')
+      : state.vsPitcher;
+    el.innerHTML = `Where <span class="k">${state.player}</span> hits the ball against <span class="k">${matchLabel}</span>, split into left / center / right field. ` +
+      `<b>Longer bars</b> = more balls hit there; the colors show the result (gray out, blue single, green double, gold home run). ` +
+      `He does the most damage to <b>${best.field} field</b> (${best['Home run']} home runs there).`;
   }
 }
 function setLegend() {
@@ -644,7 +777,14 @@ function setLegend() {
   } else if (v==='nasty') {
     el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('') +
       `<div class="item" style="color:var(--muted)">bigger circle = thrown more often</div>`;
-  } else {
+  } else if (v==='range') {
+    el.innerHTML = `<div class="item">misses more <span class="grad"></span> scores more</div>
+      <div class="item" style="color:var(--muted)">bar height = how often he shoots from there</div>`;
+  } else if (v==='evolution') {
+    const types = [...new Set(buildEvolution(state.player).flatMap(y=>y.pitches.map(p=>p.t)))];
+    el.innerHTML = types.map(t=>`<div class="item"><span class="dot" style="color:${MLB_TYPES[t]||'#9aa6b2'};background:${MLB_TYPES[t]||'#9aa6b2'}"></span>${t}</div>`).join('') +
+      `<div class="item" style="color:var(--muted)">each bar = one season</div>`;
+  } else { // spray + damage share outcome colors
     el.innerHTML =
       `<div class="item"><span class="dot" style="color:${SPRAY.out};background:${SPRAY.out}"></span>Out</div>` +
       `<div class="item"><span class="dot" style="color:${SPRAY.single};background:${SPRAY.single}"></span>Single</div>` +
@@ -664,7 +804,7 @@ function setChips() {
 }
 function setMatchup() {
   const el = document.getElementById('matchup');
-  if (state.view!=='spray') { el.style.display='none'; el.innerHTML=''; return; }
+  if (state.view!=='spray' && state.view!=='damage') { el.style.display='none'; el.innerHTML=''; return; }
   el.style.display='flex';
   let opts;
   if (window.__REAL_HITTERS) {
@@ -680,8 +820,8 @@ function setMatchup() {
 function setSeasons() {
   const el = document.getElementById('seasons');
   const ys = (state.view==='arsenal' || state.view==='nasty') ? pitcherSeasons(state.player)
-           : state.view==='spray' ? hitterSeasons(state.player)
-           : (state.view==='gravity' || state.view==='diet') ? nbaSeasons(state.player)
+           : (state.view==='spray' || state.view==='damage') ? hitterSeasons(state.player)
+           : (state.view==='gravity' || state.view==='diet' || state.view==='range') ? nbaSeasons(state.player)
            : null;
   if (!ys || ys.length<=1) { el.style.display='none'; el.innerHTML=''; return; }
   if (!ys.includes(state.season)) state.season = ys[ys.length-1];
@@ -720,8 +860,13 @@ canvas.addEventListener('mousemove', (e)=>{
     for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if(mx>=x&&mx<=x+w&&my>=y&&my<=y+h){ tx=mx; ty=y+h/2; html=`<b>${Math.round(it.freq*100)}%</b> of his shots · makes ${it.shootPct}%`; break; } }
   } else if (v==='nasty') {
     for (const pi of state.items){ const dx=(pi._cx||0)-mx, dy=(pi._cy||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (pi._r||0)){ tx=pi._cx; ty=pi._cy; html=`<b>${pi.t}</b> · ${pi.velo} mph · ${Math.round(pi.whiff*100)}% miss`; break; } }
-  } else {
+  } else if (v==='spray') {
     for (const b of state.items){ const dx=(b._x||0)-mx, dy=(b._y||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (b._r||0)+2){ tx=b._x; ty=b._y; html=`<b>${b.type}</b> · ${Math.round(b.dist)} ft`; break; } }
+  } else if (v==='range' || v==='damage') {
+    for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if (mx>=x && mx<=x+w && my>=y && my<=y+h){
+      if (v==='range'){ tx=x+w/2; ty=y; html=`<b>${Math.round(it.freq*100)}%</b> of shots · ${Math.round(it.fg*100)}% made`; }
+      else { tx=mx; ty=y+h/2; html=`${it.field}: <b>${it.total}</b> balls · ${it['Home run']} HR`; }
+      break; } }
   }
   if (html){ tip.style.opacity=1; tip.style.left=tx+'px'; tip.style.top=ty+'px'; tip.innerHTML=html; }
   else tip.style.opacity=0;
