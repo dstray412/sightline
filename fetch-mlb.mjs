@@ -1,10 +1,18 @@
 // Pulls REAL MLB Statcast data and writes mlb-data.js for the SIGHTLINE prototype.
 // Run:  node fetch-mlb.mjs      (Node 18+, uses built-in fetch — no installs)
 // Produces: mlb-data.js  ->  window.SIGHTLINE_MLB = { pitchers: {...} }
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
+
+// `--refresh` = pull ONLY the current season and merge into existing data (fast daily update).
+const REFRESH = process.argv.includes("--refresh");
+const CURRENT_SEASON = new Date().getFullYear();
+function loadExisting(path){
+  try { const w={}; new Function("window", readFileSync(path,"utf8"))(w); return w.SIGHTLINE_MLB; }
+  catch { return null; }
+}
 
 // Seasons to pull for each pitcher (kept only if the pitcher actually threw that year).
-const SEASONS = [2021, 2022, 2023, 2024, 2025];
+const SEASONS = [2021, 2022, 2023, 2024, 2025, 2026];
 
 // Real pitchers. id = MLB player id.
 const PITCHERS = [
@@ -19,7 +27,7 @@ const PITCHERS = [
 ];
 
 // Hitters for the Spray Chart (per season; split by pitcher handedness).
-const HITTER_SEASONS = [2021, 2022, 2023, 2024, 2025];
+const HITTER_SEASONS = [2021, 2022, 2023, 2024, 2025, 2026];
 const MAX_BALLS = 400; // sample cap per hitter-season (keeps the data file lean)
 const HITTERS = [
   { name: "Aaron Judge",     id: 592450 },
@@ -138,7 +146,7 @@ const out = {};
 const hitters = {};
 for (const p of PITCHERS){
   const seasons = {};
-  for (const yr of SEASONS){
+  for (const yr of (REFRESH ? [CURRENT_SEASON] : SEASONS)){
     try {
       const r = await fetchPitcher(p, yr);
       if (r.total >= 150){ seasons[yr] = r.pitches; console.log(`✓ ${p.name} ${yr}: ${r.total} pitches`); }
@@ -150,7 +158,7 @@ for (const p of PITCHERS){
 
 for (const h of HITTERS){
   const seasons = {};
-  for (const yr of HITTER_SEASONS){
+  for (const yr of (REFRESH ? [CURRENT_SEASON] : HITTER_SEASONS)){
     try {
       const raw = await fetchHitter(h, yr);
       if (raw.length >= 40){
@@ -164,5 +172,14 @@ for (const h of HITTERS){
   if (Object.keys(seasons).length) hitters[h.name] = { seasons };
 }
 
-writeFileSync("mlb-data.js", "window.SIGHTLINE_MLB = " + JSON.stringify({ pitchers: out, hitters }, null, 0) + ";\n");
-console.log(`\nWrote mlb-data.js: ${Object.keys(out).length} pitchers (${SEASONS.join("/")}), ${Object.keys(hitters).length} hitters (${HITTER_SEASONS.join("/")}).`);
+let result = { pitchers: out, hitters };
+if (REFRESH) {
+  const ex = loadExisting("mlb-data.js");
+  if (ex && ex.pitchers && ex.hitters) {
+    for (const [n,d] of Object.entries(out))     { (ex.pitchers[n] ||= {seasons:{}}); Object.assign(ex.pitchers[n].seasons, d.seasons); }
+    for (const [n,d] of Object.entries(hitters)) { (ex.hitters[n]  ||= {seasons:{}}); Object.assign(ex.hitters[n].seasons,  d.seasons); }
+    result = ex;
+  }
+}
+writeFileSync("mlb-data.js", "window.SIGHTLINE_MLB = " + JSON.stringify(result, null, 0) + ";\n");
+console.log(`\nWrote mlb-data.js${REFRESH?` (refreshed ${CURRENT_SEASON} only)`:``}: ${Object.keys(result.pitchers).length} pitchers, ${Object.keys(result.hitters).length} hitters.`);

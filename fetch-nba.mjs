@@ -1,10 +1,18 @@
 // Pulls REAL NBA shot data (public GitHub dataset) by season and writes nba-data.js.
 // stats.nba.com blocks datacenter IPs, so we use DomSamangy/NBA_Shots_04_25 (every shot, by season).
 // Run:  node fetch-nba.mjs      (Node 18+, no installs — unzips with built-in zlib)
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 
-const SEASONS = [2021, 2022, 2023, 2024, 2025];
+// `--refresh` = pull ONLY the current season and merge into existing data (fast daily update).
+const REFRESH = process.argv.includes("--refresh");
+const CURRENT_SEASON = new Date().getFullYear();
+function loadExisting(path){
+  try { const w={}; new Function("window", readFileSync(path,"utf8"))(w); return w.SIGHTLINE_NBA; }
+  catch { return null; }
+}
+
+const SEASONS = [2021, 2022, 2023, 2024, 2025, 2026]; // 2026 skipped automatically until the dataset adds it
 const zipUrl = (s) => `https://raw.githubusercontent.com/DomSamangy/NBA_Shots_04_25/main/NBA_${s}_Shots.csv.zip`;
 const MAX_SHOTS = 800; // sample cap per player-season (keeps the data file lean; diet stays exact)
 
@@ -87,16 +95,27 @@ function aggregateSeason(csv){
 }
 
 const players = {};
-for (const season of SEASONS){
-  console.log(`Downloading ${season} NBA shots...`);
-  const res = await fetch(zipUrl(season));
-  const csv = unzipSingle(Buffer.from(await res.arrayBuffer())).toString("utf8");
-  const data = aggregateSeason(csv);
-  for (const [name, d] of Object.entries(data)){
-    (players[name] ||= { seasons:{} }).seasons[season] = d;
-    console.log(`  ✓ ${name} ${season}: ${d.shots.length} shots`);
-  }
+for (const season of (REFRESH ? [CURRENT_SEASON] : SEASONS)){
+  try {
+    console.log(`Downloading ${season} NBA shots...`);
+    const res = await fetch(zipUrl(season));
+    if (!res.ok){ console.log(`  · ${season}: not published yet (HTTP ${res.status}) — skipped`); continue; }
+    const csv = unzipSingle(Buffer.from(await res.arrayBuffer())).toString("utf8");
+    const data = aggregateSeason(csv);
+    for (const [name, d] of Object.entries(data)){
+      (players[name] ||= { seasons:{} }).seasons[season] = d;
+      console.log(`  ✓ ${name} ${season}: ${d.shots.length} shots`);
+    }
+  } catch(e){ console.log(`  · ${season}: skipped (${e.message})`); }
 }
 
-writeFileSync("nba-data.js", "window.SIGHTLINE_NBA = " + JSON.stringify({ players }, null, 0) + ";\n");
-console.log(`\nWrote nba-data.js: ${Object.keys(players).length} players, seasons ${SEASONS.join("/")}.`);
+let result = { players };
+if (REFRESH) {
+  const ex = loadExisting("nba-data.js");
+  if (ex && ex.players) {
+    for (const [n,d] of Object.entries(players)) { (ex.players[n] ||= {seasons:{}}); Object.assign(ex.players[n].seasons, d.seasons); }
+    result = ex;
+  }
+}
+writeFileSync("nba-data.js", "window.SIGHTLINE_NBA = " + JSON.stringify(result, null, 0) + ";\n");
+console.log(`\nWrote nba-data.js${REFRESH?` (refreshed ${CURRENT_SEASON} only)`:``}: ${Object.keys(result.players).length} players.`);
