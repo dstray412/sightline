@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"echo \\\"=== MLB Stats API (open, no auth) ===\\\"; curl -s --max-time 15 \\\"https://statsapi.mlb.com/api/v1/teams?sportId=1\\\" 2>&1 | head -c 300; echo; echo\\necho \\\"=== Baseball Savant / Statc...",
+  "error": "Exit code 28\n=== MLB Stats API (open, no auth) ===\n{\"copyright\":\"Copyright 2026 MLB Advanced Media, L.P.  Use of any content on this page acknowledges agreement to the terms posted here http://gdx.mlb.com/components/copyright.txt\",\"teams\":[{\"springLeague\":{\"id\":114,\"name\":\"Cactus League\",\"link\":\"/api/v1/league/114\",\"abbreviation\":\"CL\"},\"allStarStatu\n\n=== Baseball Savant / Statcast (pitch + hit data) ===\nHTTP 000, 0 bytes\n=== NBA stats.nba.com (needs headers, often blocks) ===\nHTTP 000",
+  "timestamp": "2026-07-27T04:28:22.487Z",
+  "retry_count": 1
+}

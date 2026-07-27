@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SIGHTLINE — sports data, seen differently</title>
+<style>
+  :root {
+    --bg: #07080c; --panel: rgba(255,255,255,0.04); --line: rgba(255,255,255,0.09);
+    --text: #eef1f7; --muted: #8b93a7; --accent: #38e1ff; --accent2: #7c5cff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(124,92,255,0.18), transparent 60%),
+      radial-gradient(1000px 700px at 0% 110%, rgba(56,225,255,0.12), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 26px 24px 60px; }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
+  .logo { font-weight: 800; letter-spacing: .14em; font-size: 20px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tag { color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+  .sports { margin-left: auto; display: flex; gap: 6px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+  .sport { padding: 8px 16px; border-radius: 9px; cursor: pointer; color: var(--muted);
+    font-weight: 700; font-size: 13px; letter-spacing: .06em; border: none; background: transparent; transition: .18s; }
+  .sport.active { background: linear-gradient(90deg, rgba(56,225,255,.18), rgba(124,92,255,.18));
+    color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+  .sport:not(.active):hover { color: var(--text); }
+
+  .stage { margin-top: 22px; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+    border: 1px solid var(--line); border-radius: 20px; padding: 20px; position: relative; overflow: hidden; }
+  .toprow { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  .subtitle { font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .viztitle { font-size: 22px; font-weight: 800; margin: 2px 0 0; }
+  .chips { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted); transition: .16s; }
+  .chip.active { color: #06131a; background: linear-gradient(90deg, var(--accent), #7fe9ff); border-color: transparent; }
+  .chip:not(.active):hover { color: var(--text); border-color: var(--accent); }
+
+  .views { display: flex; gap: 6px; margin: 2px 0 4px; flex-wrap: wrap; }
+  .viewbtn { padding: 7px 13px; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: 12.5px;
+    background: transparent; border: 1px solid var(--line); color: var(--muted); transition: .15s; }
+  .viewbtn.active { color: var(--text); background: linear-gradient(90deg, rgba(56,225,255,.16), rgba(124,92,255,.16));
+    border-color: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+  .viewbtn:not(.active):hover { color: var(--text); }
+
+  .matchup, .seasons { display: none; align-items: center; gap: 6px; margin: 2px 0 6px; flex-wrap: wrap; }
+  .vslabel { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-right: 4px; }
+  .chip.sm { padding: 5px 11px; font-size: 12px; }
+
+  .canvas-holder { position: relative; width: 100%; }
+  canvas { width: 100%; display: block; border-radius: 14px; }
+  .tooltip { position: absolute; pointer-events: none; opacity: 0; transform: translate(-50%,-120%);
+    background: rgba(10,12,18,.94); border: 1px solid var(--line); border-radius: 10px; padding: 8px 11px;
+    font-size: 12.5px; white-space: nowrap; box-shadow: 0 10px 30px rgba(0,0,0,.5); transition: opacity .12s; z-index: 4; }
+  .tooltip b { color: var(--accent); }
+
+  .insight { margin-top: 14px; padding: 13px 16px; border-radius: 12px; background: var(--panel);
+    border: 1px solid var(--line); font-size: 14.5px; }
+  .insight .k { color: var(--accent); font-weight: 700; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+  .legend .item { display: flex; align-items: center; gap: 7px; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .grad { width: 120px; height: 10px; border-radius: 6px;
+    background: linear-gradient(90deg,#2f6bff,#25c2a0,#ffd24a,#ff7a3c,#ff3b5c); }
+
+  footer { margin-top: 22px; color: var(--muted); font-size: 12px; text-align: center; }
+  .badge { display:inline-block; padding: 3px 9px; border:1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">SIGHTLINE</div>
+    <div class="tag">sports data, seen differently</div>
+    <div class="sports" id="sports">
+      <button class="sport active" data-sport="nba">NBA</button>
+      <button class="sport" data-sport="mlb">MLB</button>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="toprow">
+      <div>
+        <div class="subtitle" id="subtitle">Scoring Gravity</div>
+        <div class="viztitle" id="viztitle">Where a scorer is actually deadly</div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="views" id="views"></div>
+    <div class="seasons" id="seasons"></div>
+    <div class="matchup" id="matchup"></div>
+
+    <div class="canvas-holder">
+      <canvas id="viz"></canvas>
+      <div class="tooltip" id="tip"></div>
+    </div>
+
+    <div class="insight" id="insight"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <footer>
+    <span class="badge" id="badge">PROTOTYPE · sample data</span>&nbsp; one engine, every sport — live NBA Stats &amp; MLB Statcast feeds wire in next.
+  </footer>
+</div>
+
+<!-- Real data (optional): produced by `node fetch-mlb.mjs` / `node fetch-nba.mjs`. Absent = sample data. -->
+<script src="mlb-data.js"></script>
+<script src="nba-data.js"></script>
+<script>
+// ---------- tiny deterministic RNG (stable layouts) ----------
+function rng(seed) { let s = seed >>> 0; return () => { s = (s*1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function gauss(r) { return (r()+r()+r()-1.5) * 0.9; } // ~N(0,1)-ish
+
+const canvas = document.getElementById('viz');
+const ctx = canvas.getContext('2d');
+const tip = document.getElementById('tip');
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W = 0, H = 0;
+
+// ==================================================================
+// NBA — Scoring Gravity: shots colored by POINTS PER SHOT (expected value)
+// ==================================================================
+// Court model: basket at (0,0), feet. x:-25..25, y:0..40 (toward halfcourt).
+const NBA_ZONES = [
+  { id:'rim',   x:0,   y:2,  s:3, pv:2 },
+  { id:'paint', x:0,   y:9,  s:5, pv:2 },
+  { id:'lmid',  x:-13, y:12, s:4, pv:2 },
+  { id:'rmid',  x:13,  y:12, s:4, pv:2 },
+  { id:'lc3',   x:-22, y:4,  s:2, pv:3 },
+  { id:'rc3',   x:22,  y:4,  s:2, pv:3 },
+  { id:'lw3',   x:-17, y:20, s:3, pv:3 },
+  { id:'rw3',   x:17,  y:20, s:3, pv:3 },
+  { id:'top3',  x:0,   y:27, s:4, pv:3 },
+];
+// attempts + fg% per zone, per archetype
+const NBA_PLAYERS = {
+  'The Sniper':      { seed: 11, z:{rim:.06,paint:.06,lmid:.05,rmid:.05,lc3:.14,rc3:.14,lw3:.15,rw3:.15,top3:.14}, fg:{rim:.62,paint:.44,lmid:.40,rmid:.41,lc3:.45,rc3:.46,lw3:.43,rw3:.44,top3:.42} },
+  'The Rim Wrecker': { seed: 22, z:{rim:.42,paint:.26,lmid:.08,rmid:.08,lc3:.03,rc3:.03,lw3:.03,rw3:.03,top3:.04}, fg:{rim:.72,paint:.52,lmid:.36,rmid:.35,lc3:.33,rc3:.34,lw3:.31,rw3:.30,top3:.32} },
+  'The Maestro':     { seed: 33, z:{rim:.16,paint:.16,lmid:.16,rmid:.16,lc3:.06,rc3:.06,lw3:.09,rw3:.09,top3:.06}, fg:{rim:.66,paint:.48,lmid:.47,rmid:.48,lc3:.40,rc3:.41,lw3:.39,rw3:.38,top3:.40} },
+};
+const LEAGUE_PPS = 1.06;
+
+function buildNBA(name) {
+  const p = NBA_PLAYERS[name];
+  const d = nbaData(name);
+  if (d) return { pts: d.shots.map(s=>({ x:s[0], y:s[1], pps:s[2], fg:s[3], pv:0 })), player:p };
+  const r = rng(p.seed), pts = [];
+  const TOTAL = 360;
+  for (const z of NBA_ZONES) {
+    const n = Math.round((p.z[z.id]||0) * TOTAL);
+    const fg = p.fg[z.id], pps = fg * z.pv;
+    for (let i=0;i<n;i++){
+      pts.push({ x: z.x + gauss(r)*z.s, y: z.y + gauss(r)*z.s, pps, fg, pv:z.pv, zone:z.id });
+    }
+  }
+  return { pts, player:p };
+}
+function ppsColor(pps) {
+  // 0.6 -> blue, 1.06 -> teal/green, 1.3+ -> orange/red
+  const t = Math.max(0, Math.min(1, (pps - 0.6) / (1.45 - 0.6)));
+  const stops = [[47,107,255],[37,194,160],[255,210,74],[255,122,60],[255,59,92]];
+  const seg = t*(stops.length-1); const i = Math.floor(seg); const f = seg-i;
+  const a = stops[i], b = stops[Math.min(i+1,stops.length-1)];
+  return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
+}
+function nbaToPx(x, y) {
+  // court x:-25..25 -> padding..W-padding ; y:0..40 -> bottom..top
+  const pad = 24, cw = W - pad*2, ch = H - pad*2;
+  return [ pad + ((x+25)/50)*cw, H - pad - (y/40)*ch ];
+}
+function drawCourt() {
+  ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1.5;
+  const [bx,by] = nbaToPx(0,0);
+  const unit = (W-48)/50; // px per foot (x)
+  // baseline
+  ctx.beginPath(); ctx.moveTo(24,by); ctx.lineTo(W-24,by); ctx.stroke();
+  // paint
+  const [pl] = nbaToPx(-8,0), pw = 16*unit; const [,pt] = nbaToPx(0,19);
+  ctx.strokeRect(pl, pt, pw, by-pt);
+  // restricted / rim
+  ctx.beginPath(); ctx.arc(bx,by,unit*1.2,0,Math.PI*2); ctx.stroke();
+  // FT circle
+  ctx.beginPath(); ctx.arc(bx, pt, unit*6, 0, Math.PI*2); ctx.stroke();
+  // 3pt arc (approx r=23.75ft, corners 22)
+  ctx.beginPath();
+  const r3 = 23.75*unit;
+  const [cxL] = nbaToPx(-22,0), [cxR]=nbaToPx(22,0), [,cornerTop]=nbaToPx(0,9.5);
+  ctx.moveTo(cxL, by); ctx.lineTo(cxL, cornerTop);
+  ctx.arc(bx, by, r3, Math.PI + 0.38, -0.38, false);
+  ctx.lineTo(cxR, by);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ==================================================================
+// MLB — Pitch Arsenal: every pitch in break-space, clustered by type
+// ==================================================================
+// hBreak (-x glove side / +x arm side, in), vBreak induced (in). velo, usage, whiff.
+const MLB_TYPES = {
+  '4-Seam':   '#ff5470', 'Sinker': '#ffb02e', 'Cutter': '#ff7ae0',
+  'Slider':   '#38e1ff', 'Curveball': '#7c5cff', 'Changeup': '#42d98a',
+  'Sweeper':  '#22d3ff', 'Splitter': '#9ae66e', 'Slurve': '#6ad0ff',
+};
+const MLB_PLAYERS = {
+  'The Flamethrower (RHP)': { seed: 7, pitches: [
+    { t:'4-Seam',   hb:7,  vb:16, velo:98, use:.52, whiff:.24 },
+    { t:'Slider',   hb:-6, vb:1,  velo:88, use:.31, whiff:.41 },
+    { t:'Changeup', hb:13, vb:5,  velo:89, use:.17, whiff:.33 },
+  ]},
+  'The Junkballer (LHP)': { seed: 8, pitches: [
+    { t:'Curveball',hb:9,  vb:-12,velo:74, use:.30, whiff:.38 },
+    { t:'Changeup', hb:-14,vb:4,  velo:80, use:.28, whiff:.36 },
+    { t:'Cutter',   hb:2,  vb:9,  velo:87, use:.24, whiff:.22 },
+    { t:'4-Seam',   hb:-8, vb:13, velo:90, use:.18, whiff:.18 },
+  ]},
+  'The Groundball Machine (RHP)': { seed: 9, pitches: [
+    { t:'Sinker',   hb:15, vb:6,  velo:94, use:.46, whiff:.14 },
+    { t:'Slider',   hb:-8, vb:0,  velo:86, use:.34, whiff:.35 },
+    { t:'Changeup', hb:14, vb:3,  velo:86, use:.20, whiff:.29 },
+  ]},
+};
+function buildMLB(name) {
+  const r = rng(MLB_PLAYERS[name].seed), pts = [];
+  for (const pi of pitcherPitches(name)) {
+    const n = Math.round(pi.use * 260);
+    for (let i=0;i<n;i++){
+      pts.push({ ...pi, hb: pi.hb + gauss(r)*4.2, vb: pi.vb + gauss(r)*4.2 }); // ...pi FIRST, else it overwrites the scatter
+    }
+  }
+  return pts;
+}
+function mlbToPx(hb, vb) {
+  const pad = 40; const range = 24; // inches each way
+  const cw = W - pad*2, ch = H - pad*2;
+  return [ pad + ((hb+range)/(range*2))*cw, pad + (1-(vb+range)/(range*2))*ch ];
+}
+function drawBreakGrid() {
+  ctx.save(); ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.lineWidth=1; ctx.font='11px ui-sans-serif, system-ui';
+  for (let v=-20; v<=20; v+=10){
+    const [,y]=mlbToPx(0,v); ctx.beginPath(); ctx.moveTo(40,y); ctx.lineTo(W-40,y); ctx.stroke();
+    const [x0]=mlbToPx(-24,0); ctx.fillText(v+'"', 6, y+3);
+  }
+  for (let h=-20; h<=20; h+=10){
+    const [x]=mlbToPx(h,0); ctx.beginPath(); ctx.moveTo(x,40); ctx.lineTo(x,H-40); ctx.stroke();
+    const [,y0]=mlbToPx(0,-24); ctx.fillText(h+'"', x-8, H-24);
+  }
+  // center axes
+  ctx.strokeStyle='rgba(255,255,255,0.16)';
+  const [cx]=mlbToPx(0,0), [,cy]=mlbToPx(0,0);
+  ctx.beginPath(); ctx.moveTo(cx,40); ctx.lineTo(cx,H-40); ctx.moveTo(40,cy); ctx.lineTo(W-40,cy); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='11px ui-sans-serif, system-ui';
+  ctx.fillText('← glove side      horizontal break      arm side →', 46, 26);
+  ctx.save(); ctx.translate(16, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('drop        vertical break        ride', -60, 0); ctx.restore();
+  ctx.restore();
+}
+
+// ==================================================================
+// Views + state — each sport now has multiple visualizations
+// ==================================================================
+const VIEW_META = {
+  gravity: { sport:'nba', sub:'Scoring Gravity', title:'Where a scorer is deadly' },
+  diet:    { sport:'nba', sub:'Shot Diet',       title:'What kinds of shots he takes' },
+  arsenal: { sport:'mlb', sub:'Pitch Arsenal',   title:'How a pitcher moves the ball' },
+  nasty:   { sport:'mlb', sub:'Nastiness',       title:'Which pitches fool batters' },
+  spray:   { sport:'mlb', sub:'Spray Chart',     title:'Where a hitter hits it — matchup' },
+};
+const SPORT_VIEWS = { nba:['gravity','diet'], mlb:['arsenal','nasty','spray'] };
+const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)' };
+
+// Which kind of player each view is about (chips + defaults follow this).
+const ENTITY = { gravity:'scorer', diet:'scorer', arsenal:'pitcher', nasty:'pitcher', spray:'hitter' };
+const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger' };
+
+let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', items:[], t0:0, raf:0 };
+const sport = () => VIEW_META[state.view].sport;
+const isScatter = () => state.view==='gravity' || state.view==='arsenal';
+
+// A real pitcher has {seasons:{'2024':[...]}}; a sample archetype has {pitches:[...]}.
+function pitcherSeasons(name){ const p=MLB_PLAYERS[name]; return p && p.seasons ? Object.keys(p.seasons).sort() : null; }
+function pitcherPitches(name){
+  const p=MLB_PLAYERS[name]; if(!p) return [];
+  if(p.seasons){ const ys=Object.keys(p.seasons).sort(); const y=ys.includes(state.season)?state.season:ys[ys.length-1]; return p.seasons[y]; }
+  return p.pitches || [];
+}
+function nbaSeasons(name){ const p=NBA_PLAYERS[name]; return p && p.seasons ? Object.keys(p.seasons).sort() : null; }
+function nbaData(name){
+  const p=NBA_PLAYERS[name]; if(!p) return null;
+  if(p.seasons){ const ys=Object.keys(p.seasons).sort(); const y=ys.includes(state.season)?state.season:ys[ys.length-1]; return p.seasons[y]; }
+  return p.shots ? p : null; // legacy single-season {shots,diet}
+}
+
+// ---- REAL DATA: if mlb-data.js loaded, swap sample MLB pitchers for the real ones ----
+if (window.SIGHTLINE_MLB && window.SIGHTLINE_MLB.pitchers && Object.keys(window.SIGHTLINE_MLB.pitchers).length) {
+  const real = window.SIGHTLINE_MLB.pitchers;
+  const years = new Set();
+  for (const p of Object.values(real)) for (const pcs of Object.values(p.seasons||{})) { for (const pc of pcs) if(!MLB_TYPES[pc.t]) MLB_TYPES[pc.t]='#9aa6b2'; }
+  for (const p of Object.values(real)) Object.keys(p.seasons||{}).forEach(y=>years.add(y));
+  for (const k of Object.keys(MLB_PLAYERS)) delete MLB_PLAYERS[k];
+  Object.assign(MLB_PLAYERS, real);
+  const first = Object.keys(real)[0];
+  DEFAULT_PLAYER.mlb = first;
+  ENTITY_DEFAULT.pitcher = first;
+  if (years.size) state.season = [...years].sort().pop();
+  const badge = document.getElementById('badge');
+  if (badge) badge.textContent = 'REAL Statcast — MLB pitchers, by season';
+}
+
+function rr(x,y,w,h,r){ ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x,y,w,h,r);
+  else { ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); } }
+
+// where on the floor is this player most dangerous?
+// Takes a resolved diet array (from buildDiet) — works for real and sample players.
+function nbaBestArea(diet) {
+  const best = [...diet].sort((a,b)=>b.value-a.value)[0];
+  return ({ 'At the rim':'right at the rim', 'Close range':'in the paint', 'Mid-range':'from mid-range', '3-pointers':'from three' }[best.label]) || best.label.toLowerCase();
+}
+
+// ---- Spray Chart (hitter vs pitcher matchup) ----
+const SPRAY = { out:'#5b6472', single:'#38a1ff', double:'#42d98a', hr:'#ffd24a' };
+const MLB_HITTERS = {
+  'The Pull Slugger':     { seed:41, mean:-24, spread:12, power:300, pspread:70 }, // yanks it to left, big power
+  'The Spray Hitter':     { seed:42, mean:2,   spread:22, power:250, pspread:60 }, // uses all fields
+  'The Oppo Slap Hitter': { seed:43, mean:22,  spread:14, power:205, pspread:55 }, // pushes it the other way
+};
+// How each pitcher changes the hitter's contact.
+const MATCHUP = {
+  'The Flamethrower (RHP)':      { distMult:0.85, ground:0.32, pull:-4 }, // velocity = weaker, later contact
+  'The Junkballer (LHP)':        { distMult:0.94, ground:0.50, pull:6 },  // out in front, more grounders
+  'The Groundball Machine (RHP)':{ distMult:0.90, ground:0.60, pull:0 },  // buries it in the ground
+};
+function fenceAt(a){ return 330 + (1 - Math.abs(a)/45) * 80; } // 330 down the lines, 410 to center
+function fieldGeom(){
+  const padB=44, padT=28, padX=38;
+  return { cx:W/2, hy:H-padB, scale:Math.min((H-padT-padB)/415, (W/2-padX)/300) };
+}
+function sprayMap(a, dist){
+  const {cx,hy,scale} = fieldGeom(); const rad=a*Math.PI/180;
+  return [ cx + dist*Math.sin(rad)*scale, hy - dist*Math.cos(rad)*scale ];
+}
+function hitterSeasons(name){ const h=MLB_HITTERS[name]; return h && h.seasons ? Object.keys(h.seasons).sort() : null; }
+function hitterBalls(name){
+  const h=MLB_HITTERS[name]; if(!h) return null;
+  if(h.seasons){ const ys=Object.keys(h.seasons).sort(); const y=ys.includes(state.season)?state.season:ys[ys.length-1]; return h.seasons[y]; }
+  return h.balls || null; // legacy single-season format
+}
+function buildSpray(hName, key){
+  const h=MLB_HITTERS[hName];
+  if (h.balls || h.seasons){ // REAL hitter: batted balls for the season, filtered by pitcher handedness
+    const src = hitterBalls(hName) || [];
+    const arr = (key==='all'||!key) ? src : src.filter(b=>b.hand===key);
+    return arr.map(b=>({ a:b.a, dist:b.dist, type:b.type,
+      color: b.type==='Home run'?SPRAY.hr : b.type==='Double'?SPRAY.double : b.type==='Single'?SPRAY.single : SPRAY.out }));
+  }
+  const m=MATCHUP[key];
+  const r = rng(h.seed*7 + Object.keys(MATCHUP).indexOf(key)*131 + 5);
+  const balls=[];
+  for (let i=0;i<54;i++){
+    const ground = r() < m.ground;
+    let a = Math.max(-46, Math.min(46, h.mean + m.pull + gauss(r)*h.spread));
+    let dist = ground ? 28 + r()*112 : Math.max(60, h.power*m.distMult + gauss(r)*h.pspread);
+    dist = Math.min(dist, 445);
+    const fence = fenceAt(a);
+    let type, color;
+    if (dist >= fence)            { type='Home run'; color=SPRAY.hr; }
+    else if (dist >= fence-70)    { r()<0.45 ? (type='Double',color=SPRAY.double) : (type='Out',color=SPRAY.out); }
+    else if (dist >= 150)         { r()<0.33 ? (type='Single',color=SPRAY.single) : (type='Out',color=SPRAY.out); }
+    else                          { r()<0.15 ? (type='Single',color=SPRAY.single) : (type='Out',color=SPRAY.out); }
+    balls.push({ a, dist, type, color });
+  }
+  return balls;
+}
+function drawField(){
+  const {cx,hy} = fieldGeom();
+  ctx.save();
+  // fair-territory wedge
+  ctx.beginPath(); ctx.moveTo(cx,hy);
+  for (let a=-45;a<=45;a+=3){ const [x,y]=sprayMap(a,fenceAt(a)); ctx.lineTo(x,y); }
+  ctx.closePath(); ctx.fillStyle='rgba(56,180,120,0.06)'; ctx.fill();
+  // outfield fence
+  ctx.beginPath();
+  for (let a=-45;a<=45;a+=2){ const [x,y]=sprayMap(a,fenceAt(a)); a===-45?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.lineWidth=1.5; ctx.stroke();
+  // foul lines
+  ctx.strokeStyle='rgba(255,255,255,0.22)';
+  [-45,45].forEach(a=>{ const [x,y]=sprayMap(a,fenceAt(a)); ctx.beginPath(); ctx.moveTo(cx,hy); ctx.lineTo(x,y); ctx.stroke(); });
+  // infield diamond
+  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.beginPath();
+  [[0,0],[45,90],[0,127],[-45,90]].forEach(([a,d],i)=>{ const [x,y]=sprayMap(a,d); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.closePath(); ctx.stroke();
+  // field labels
+  ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  let p;
+  p=sprayMap(-40,fenceAt(-40)+20); ctx.fillText('LEFT', p[0], p[1]);
+  p=sprayMap(0,fenceAt(0)+15);     ctx.fillText('CENTER', p[0], p[1]);
+  p=sprayMap(40,fenceAt(40)+20);   ctx.fillText('RIGHT', p[0], p[1]);
+  ctx.restore();
+}
+function drawSpray(prog){
+  drawField();
+  const n=state.items.length;
+  ctx.save();
+  for (let i=0;i<n;i++){
+    const b=state.items[i];
+    const appear=Math.max(0, Math.min(1, prog*1.5 - (i/n)*0.5)); if(appear<=0) continue;
+    const e=1-Math.pow(1-appear,3);
+    const [x,y]=sprayMap(b.a,b.dist);
+    const out=b.type==='Out';
+    const radius = out?3.2 : b.type==='Home run'?6 : 5;
+    ctx.globalAlpha=(out?0.5:0.95)*e; ctx.shadowColor=b.color; ctx.shadowBlur=(out?0:12)*e; ctx.fillStyle=b.color;
+    ctx.beginPath(); ctx.arc(x,y,radius*e,0,Math.PI*2); ctx.fill();
+    b._x=x; b._y=y; b._r=radius;
+  }
+  ctx.globalAlpha=1; ctx.restore();
+}
+
+// ---- REAL DATA: swap sample hitters for real batted-ball data if present ----
+if (window.SIGHTLINE_MLB && window.SIGHTLINE_MLB.hitters && Object.keys(window.SIGHTLINE_MLB.hitters).length) {
+  const rh = window.SIGHTLINE_MLB.hitters;
+  for (const k of Object.keys(MLB_HITTERS)) delete MLB_HITTERS[k];
+  Object.assign(MLB_HITTERS, rh);
+  ENTITY_DEFAULT.hitter = Object.keys(rh)[0];
+  state.vsPitcher = 'all';           // matchup is now pitcher handedness
+  window.__REAL_HITTERS = true;
+  const badge = document.getElementById('badge');
+  if (badge) badge.textContent = 'REAL MLB Statcast — pitchers & hitters';
+}
+
+// ---- REAL DATA: swap sample NBA scorers for real shot data if present ----
+if (window.SIGHTLINE_NBA && window.SIGHTLINE_NBA.players && Object.keys(window.SIGHTLINE_NBA.players).length) {
+  const rp = window.SIGHTLINE_NBA.players;
+  for (const k of Object.keys(NBA_PLAYERS)) delete NBA_PLAYERS[k];
+  Object.assign(NBA_PLAYERS, rp);
+  const first = Object.keys(rp)[0];
+  DEFAULT_PLAYER.nba = first;
+  ENTITY_DEFAULT.scorer = first;
+  if (ENTITY[state.view]==='scorer') state.player = first; // default view is NBA gravity
+  window.__REAL_NBA = true;
+  const badge = document.getElementById('badge');
+  if (badge) badge.textContent = 'REAL data — NBA shots + MLB Statcast';
+}
+
+// ---- data builders for the new views ----
+function buildDiet(name) {
+  const p = NBA_PLAYERS[name];
+  const nd = nbaData(name);
+  if (nd) return nd.diet.map(d=>({ ...d, color: ppsColor(d.value) }));
+  const areas = [
+    { label:'At the rim',  ids:['rim'] },
+    { label:'Close range', ids:['paint'] },
+    { label:'Mid-range',   ids:['lmid','rmid'] },
+    { label:'3-pointers',  ids:['lc3','rc3','lw3','rw3','top3'] },
+  ];
+  return areas.map(a=>{
+    let freq=0, att=0, made=0, pts=0;
+    for (const z of NBA_ZONES) if (a.ids.includes(z.id)) { freq+=p.z[z.id]; att+=p.z[z.id]; made+=p.z[z.id]*p.fg[z.id]; pts+=p.z[z.id]*p.fg[z.id]*z.pv; }
+    const value = att ? pts/att : 0;
+    return { label:a.label, freq, value, shootPct: att ? Math.round(made/att*100) : 0, color: ppsColor(value) };
+  });
+}
+function buildNasty(name) {
+  return pitcherPitches(name).map(pi => ({ ...pi, color: MLB_TYPES[pi.t] }));
+}
+
+// ---- scatter layout (Scoring Gravity + Pitch Arsenal need pixel positions) ----
+function layoutScatter() {
+  const nba = state.view==='gravity';
+  for (const p of state.items) {
+    const [px,py] = nba ? nbaToPx(p.x,p.y) : mlbToPx(p.hb,p.vb);
+    p.px = px; p.py = py;
+  }
+}
+
+function rebuild() {
+  const v = state.view;
+  state.items = v==='gravity' ? buildNBA(state.player).pts
+              : v==='arsenal' ? buildMLB(state.player)
+              : v==='diet'    ? buildDiet(state.player)
+              : v==='nasty'   ? buildNasty(state.player)
+              :                 buildSpray(state.player, state.vsPitcher);
+  if (isScatter()) layoutScatter();
+  state.t0 = performance.now();
+  cancelAnimationFrame(state.raf);
+  animate();
+}
+function animate() {
+  const el = Math.min(1,(performance.now()-state.t0)/900);
+  render(el);
+  if (el < 1) state.raf = requestAnimationFrame(animate);
+}
+function render(prog) {
+  ctx.clearRect(0,0,W,H);
+  if (isScatter()) drawScatter(prog);
+  else if (state.view==='diet') drawDiet(prog);
+  else if (state.view==='nasty') drawNasty(prog);
+  else drawSpray(prog);
+}
+
+// ---- Scoring Gravity + Pitch Arsenal (point clouds) ----
+function drawScatter(prog) {
+  const nba = state.view==='gravity';
+  if (nba) drawCourt(); else drawBreakGrid();
+  const n = state.items.length;
+  ctx.save();
+  for (let i=0;i<n;i++){
+    const p = state.items[i];
+    const appear = Math.max(0, Math.min(1, prog*1.4 - (i/n)*0.4));
+    if (appear<=0) continue;
+    const e = 1-Math.pow(1-appear,3);
+    let color, radius, alpha, blur;
+    if (nba){ color = ppsColor(p.pps); radius = 4.4; alpha = 0.82; blur = 14; }
+    else { color = MLB_TYPES[p.t]; radius = 2.8; alpha = 0.7; blur = 3; }
+    ctx.globalAlpha = alpha*e; ctx.shadowColor = color; ctx.shadowBlur = blur*e; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(p.px, p.py, radius*e, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---- Shot Diet (horizontal bars: how often + how good, per area) ----
+function drawDiet(prog) {
+  const items = state.items, n = items.length;
+  const padL=140, padR=72, padT=26, gap=18;
+  const rowH = (H - padT*2 - gap*(n-1)) / n;
+  const trackW = W - padL - padR;
+  const maxFreq = Math.max(...items.map(i=>i.freq));
+  ctx.save(); ctx.textBaseline='middle';
+  items.forEach((it,i)=>{
+    const y = padT + i*(rowH+gap);
+    ctx.fillStyle='#cfd6e6'; ctx.font='600 15px ui-sans-serif, system-ui'; ctx.textAlign='right';
+    ctx.fillText(it.label, padL-14, y+rowH/2);
+    ctx.fillStyle='rgba(255,255,255,0.05)'; rr(padL, y, trackW, rowH, 9); ctx.fill();
+    const w = Math.max(3, (it.freq/maxFreq)*trackW*prog);
+    ctx.shadowColor=it.color; ctx.shadowBlur=16; ctx.fillStyle=it.color; rr(padL, y, w, rowH, 9); ctx.fill(); ctx.shadowBlur=0;
+    ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 15px ui-sans-serif, system-ui';
+    ctx.fillText(Math.round(it.freq*100)+'%', padL + w + 12, y+rowH/2);
+    it._rect = [padL, y, trackW, rowH];
+  });
+  ctx.restore();
+}
+
+// ---- Nastiness (speed vs how often batters miss) ----
+function nastyMap(velo, whiff) {
+  const padL=64, padR=48, padT=40, padB=54;
+  const x = padL + ((velo-72)/(101-72)) * (W-padL-padR);
+  const y = (H-padB) - ((whiff-0.05)/(0.62-0.05)) * (H-padT-padB);
+  return [x,y];
+}
+function drawNasty(prog) {
+  const padL=64, padR=48, padT=40, padB=54;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='11px ui-sans-serif, system-ui';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for (let mph=75; mph<=100; mph+=5){ const [x]=nastyMap(mph,0.05); ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,H-padB); ctx.stroke(); ctx.fillText(mph+' mph', x, H-padB+16); }
+  ctx.textAlign='right';
+  for (let wp=10; wp<=55; wp+=10){ const [,y]=nastyMap(72,wp/100); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke(); ctx.fillText(wp+'%', padL-8, y); }
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.textAlign='center'; ctx.font='12px ui-sans-serif, system-ui';
+  ctx.fillText('how fast  →', W/2, H-16);
+  ctx.save(); ctx.translate(18, H/2); ctx.rotate(-Math.PI/2); ctx.fillText('how often batters miss  →', 0, 0); ctx.restore();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for (const pi of state.items) {
+    const [x,y] = nastyMap(pi.velo, pi.whiff);
+    const r = (12 + pi.use*46) * (0.55+0.45*prog);
+    ctx.globalAlpha=0.26*prog; ctx.fillStyle=pi.color; ctx.shadowColor=pi.color; ctx.shadowBlur=18;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=0.95; ctx.shadowBlur=0; ctx.strokeStyle=pi.color; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=prog; ctx.fillStyle='#eef1f7'; ctx.font='700 12.5px ui-sans-serif, system-ui';
+    ctx.fillText(pi.t, x, y);
+    pi._cx=x; pi._cy=y; pi._r=r;
+  }
+  ctx.globalAlpha=1; ctx.restore();
+}
+
+function resize() {
+  const holderW = canvas.parentElement.clientWidth;
+  const asp = { gravity:0.82, diet:0.5, arsenal:0.72, nasty:0.62, spray:0.92 }[state.view];
+  W = holderW; H = Math.round(holderW*asp);
+  canvas.width = W*DPR; canvas.height = H*DPR; canvas.style.height = H+'px';
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  if (isScatter()) layoutScatter();
+  render(1);
+}
+
+// ---------- insight / legend / chips / views / titles ----------
+function setInsight() {
+  const el = document.getElementById('insight'), v = state.view;
+  if (v==='gravity') {
+    el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
+      `<b>Red</b> spots are where he scores the most, so defenders have to guard him tight there. ` +
+      `<b>Blue</b> spots are where he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
+  } else if (v==='diet') {
+    const top = [...buildDiet(state.player)].sort((a,b)=>b.freq-a.freq)[0];
+    el.innerHTML = `This shows what kinds of shots <span class="k">${state.player}</span> likes to take. ` +
+      `The <b>longer the bar</b>, the more often he shoots from there. The <b>color</b> shows how good he is at it — ` +
+      `red means great, blue means he misses a lot. Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
+  } else if (v==='arsenal') {
+    const pp = pitcherPitches(state.player);
+    const best = [...pp].sort((a,b)=>b.whiff-a.whiff)[0];
+    const topVelo = Math.max(...pp.map(x=>x.velo));
+    el.innerHTML = `Every dot is one pitch <span class="k">${state.player}</span> throws, and each color is a different kind of pitch. ` +
+      `The chart shows how much each pitch <b>curves and drops</b> before it reaches the batter. ` +
+      `His fastest pitch hits <b>${topVelo} mph</b>, and the toughest one to hit is his <b>${best.t}</b> — batters swing and miss it the most.`;
+  } else if (v==='nasty') {
+    const best = [...pitcherPitches(state.player)].sort((a,b)=>b.whiff-a.whiff)[0];
+    el.innerHTML = `Each circle is one of <span class="k">${state.player}</span>'s pitches. ` +
+      `The <b>higher up</b> it sits, the more batters swing and miss. The <b>farther right</b>, the faster it is. ` +
+      `So pitches in the <b>top-right corner are the nastiest</b>, and a bigger circle means he throws it more. His filthiest pitch is his <b>${best.t}</b>.`;
+  } else {
+    const hits = state.items.filter(b=>b.type!=='Out');
+    const meanA = hits.length ? hits.reduce((s,b)=>s+b.a,0)/hits.length : 0;
+    const field = meanA < -8 ? 'left field' : meanA > 8 ? 'right field' : 'up the middle';
+    const hr = state.items.filter(b=>b.type==='Home run').length;
+    const matchLabel = window.__REAL_HITTERS
+      ? ({all:'all pitchers', L:'left-handed pitchers', R:'right-handed pitchers'}[state.vsPitcher] || 'all pitchers')
+      : state.vsPitcher;
+    el.innerHTML = `Every dot is a ball <span class="k">${state.player}</span> hit against <span class="k">${matchLabel}</span>. ` +
+      `<b style="color:#38a1ff">Blue</b> = single, <b style="color:#42d98a">green</b> = double, <b style="color:#ffd24a">gold</b> = home run, gray = out. ` +
+      `He does the most damage to <b>${field}</b>${hr?`, including <b>${hr}</b> home run${hr>1?'s':''}`:''}.`;
+  }
+}
+function setLegend() {
+  const el = document.getElementById('legend'), v = state.view;
+  if (v==='gravity') {
+    el.innerHTML = `<div class="item">misses a lot <span class="grad"></span> scores a lot</div>
+      <div class="item" style="color:var(--muted)">color = how good he is from each spot</div>`;
+  } else if (v==='diet') {
+    el.innerHTML = `<div class="item">bar length = how often he shoots there</div>
+      <div class="item">poor <span class="grad"></span> great</div>`;
+  } else if (v==='arsenal') {
+    el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('');
+  } else if (v==='nasty') {
+    el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('') +
+      `<div class="item" style="color:var(--muted)">bigger circle = thrown more often</div>`;
+  } else {
+    el.innerHTML =
+      `<div class="item"><span class="dot" style="color:${SPRAY.out};background:${SPRAY.out}"></span>Out</div>` +
+      `<div class="item"><span class="dot" style="color:${SPRAY.single};background:${SPRAY.single}"></span>Single</div>` +
+      `<div class="item"><span class="dot" style="color:${SPRAY.double};background:${SPRAY.double}"></span>Double</div>` +
+      `<div class="item"><span class="dot" style="color:${SPRAY.hr};background:${SPRAY.hr}"></span>Home run</div>`;
+  }
+}
+function chipData() {
+  const e = ENTITY[state.view];
+  return e==='scorer' ? NBA_PLAYERS : e==='pitcher' ? MLB_PLAYERS : MLB_HITTERS;
+}
+function setChips() {
+  const el = document.getElementById('chips');
+  const names = Object.keys(chipData());
+  el.innerHTML = names.map(n=>`<button class="chip ${n===state.player?'active':''}" data-p="${n}">${n}</button>`).join('');
+  el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ state.player=c.dataset.p; setChips(); setSeasons(); rebuild(); setInsight(); });
+}
+function setMatchup() {
+  const el = document.getElementById('matchup');
+  if (state.view!=='spray') { el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='flex';
+  let opts;
+  if (window.__REAL_HITTERS) {
+    if (!['all','L','R'].includes(state.vsPitcher)) state.vsPitcher='all';
+    opts = [['all','All pitchers'],['R','vs Righties'],['L','vs Lefties']];
+  } else {
+    opts = Object.keys(MATCHUP).map(p=>[p,p]);
+  }
+  el.innerHTML = `<span class="vslabel">facing</span>` +
+    opts.map(([k,l])=>`<button class="chip sm ${k===state.vsPitcher?'active':''}" data-vp="${k}">${l}</button>`).join('');
+  el.querySelectorAll('[data-vp]').forEach(b=>b.onclick=()=>{ state.vsPitcher=b.dataset.vp; setMatchup(); rebuild(); setInsight(); });
+}
+function setSeasons() {
+  const el = document.getElementById('seasons');
+  const ys = (state.view==='arsenal' || state.view==='nasty') ? pitcherSeasons(state.player)
+           : state.view==='spray' ? hitterSeasons(state.player)
+           : (state.view==='gravity' || state.view==='diet') ? nbaSeasons(state.player)
+           : null;
+  if (!ys || ys.length<=1) { el.style.display='none'; el.innerHTML=''; return; }
+  if (!ys.includes(state.season)) state.season = ys[ys.length-1];
+  el.style.display='flex';
+  el.innerHTML = `<span class="vslabel">season</span>` +
+    ys.map(y=>`<button class="chip sm ${y===state.season?'active':''}" data-yr="${y}">${y}</button>`).join('');
+  el.querySelectorAll('[data-yr]').forEach(b=>b.onclick=()=>{ state.season=b.dataset.yr; setSeasons(); rebuild(); setInsight(); });
+}
+function setViews() {
+  const el = document.getElementById('views');
+  el.innerHTML = SPORT_VIEWS[sport()].map(v=>`<button class="viewbtn ${v===state.view?'active':''}" data-v="${v}">${VIEW_META[v].sub}</button>`).join('');
+  el.querySelectorAll('.viewbtn').forEach(b=>b.onclick=()=>{
+    const nv = b.dataset.v;
+    if (ENTITY[nv] !== ENTITY[state.view]) state.player = ENTITY_DEFAULT[ENTITY[nv]]; // switching pitcher<->hitter
+    state.view = nv;
+    setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setLegend(); resize(); rebuild(); setInsight();
+  });
+}
+function setTitles() {
+  document.getElementById('subtitle').textContent = VIEW_META[state.view].sub;
+  document.getElementById('viztitle').textContent = VIEW_META[state.view].title;
+}
+
+// ---------- hover tooltip ----------
+canvas.addEventListener('mousemove', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top, v = state.view;
+  let html=null, tx=0, ty=0;
+  if (isScatter()) {
+    let best=null, bd=1e9;
+    for (const p of state.items){ const dx=p.px-mx, dy=p.py-my, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
+    if (best && bd<260){ tx=best.px; ty=best.py;
+      html = v==='gravity' ? `<b>${(best.pps).toFixed(2)}</b> pts/shot · ${Math.round(best.fg*100)}% made`
+                           : `<b>${best.t}</b> · ${best.velo} mph · ${Math.round(best.whiff*100)}% miss`; }
+  } else if (v==='diet') {
+    for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if(mx>=x&&mx<=x+w&&my>=y&&my<=y+h){ tx=mx; ty=y+h/2; html=`<b>${Math.round(it.freq*100)}%</b> of his shots · makes ${it.shootPct}%`; break; } }
+  } else if (v==='nasty') {
+    for (const pi of state.items){ const dx=(pi._cx||0)-mx, dy=(pi._cy||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (pi._r||0)){ tx=pi._cx; ty=pi._cy; html=`<b>${pi.t}</b> · ${pi.velo} mph · ${Math.round(pi.whiff*100)}% miss`; break; } }
+  } else {
+    for (const b of state.items){ const dx=(b._x||0)-mx, dy=(b._y||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (b._r||0)+2){ tx=b._x; ty=b._y; html=`<b>${b.type}</b> · ${Math.round(b.dist)} ft`; break; } }
+  }
+  if (html){ tip.style.opacity=1; tip.style.left=tx+'px'; tip.style.top=ty+'px'; tip.innerHTML=html; }
+  else tip.style.opacity=0;
+});
+canvas.addEventListener('mouseleave', ()=> tip.style.opacity=0);
+
+// ---------- sport toggle ----------
+document.getElementById('sports').addEventListener('click', (e)=>{
+  const b = e.target.closest('.sport'); if(!b) return;
+  document.querySelectorAll('.sport').forEach(s=>s.classList.toggle('active', s===b));
+  state.view = SPORT_VIEWS[b.dataset.sport][0];
+  state.player = DEFAULT_PLAYER[b.dataset.sport];
+  setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setLegend(); resize(); rebuild(); setInsight();
+});
+
+window.addEventListener('resize', resize);
+
+// init
+setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setLegend(); rebuild(); setInsight();
+setTimeout(resize, 30);
+</script>
+</body>
+</html>
