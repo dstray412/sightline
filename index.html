@@ -336,6 +336,10 @@ if (window.SIGHTLINE_MLB && window.SIGHTLINE_MLB.pitchers && Object.keys(window.
 function rr(x,y,w,h,r){ ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x,y,w,h,r);
   else { ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); } }
+// color helpers for prettier bars
+function toRGBA(c, a){ if(c[0]==='#'){ const n=parseInt(c.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; } return c.replace('rgb(','rgba(').replace(')',`,${a})`); }
+function barGradV(yTop, yBot, c){ const g=ctx.createLinearGradient(0,yTop,0,yBot); g.addColorStop(0,toRGBA(c,0.95)); g.addColorStop(1,toRGBA(c,0.32)); return g; }
+function barGradH(x0, x1, c){ const g=ctx.createLinearGradient(x0,0,x1,0); g.addColorStop(0,toRGBA(c,0.42)); g.addColorStop(1,toRGBA(c,0.95)); return g; }
 
 // where on the floor is this player most dangerous?
 // Takes a resolved diet array (from buildDiet) — works for real and sample players.
@@ -535,17 +539,18 @@ function compColor(pct){
 }
 function drawAirYards(prog){
   const items=state.items, n=items.length; if(!n||items[0].freq===undefined) return;
-  const padL=110, padR=96, padT=26, gap=16, rowH=(H-padT*2-gap*(n-1))/n, trackW=W-padL-padR;
+  const padL=112, padR=100, padT=26, gap=22, trackW=W-padL-padR;
+  const rowH=Math.min(32,(H-padT*2-gap*(n-1))/n), totalH=n*rowH+(n-1)*gap, startY=padT+((H-padT*2)-totalH)/2;
   const maxFreq=Math.max(...items.map(d=>d.freq),0.01);
   ctx.save(); ctx.textBaseline='middle';
   items.forEach((it,i)=>{
-    const y=padT+i*(rowH+gap);
-    ctx.fillStyle='#cfd6e6'; ctx.font='600 14px ui-sans-serif, system-ui'; ctx.textAlign='right'; ctx.fillText(it.label, padL-12, y+rowH/2);
-    ctx.fillStyle='rgba(255,255,255,0.05)'; rr(padL,y,trackW,rowH,8); ctx.fill();
-    const w=Math.max(3,(it.freq/maxFreq)*trackW*prog), col=compColor(it.compPct);
-    ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=14; rr(padL,y,w,rowH,8); ctx.fill(); ctx.shadowBlur=0;
+    const y=startY+i*(rowH+gap), col=compColor(it.compPct);
+    ctx.fillStyle='#cfd6e6'; ctx.font='600 14px ui-sans-serif, system-ui'; ctx.textAlign='right'; ctx.fillText(it.label, padL-14, y+rowH/2);
+    ctx.fillStyle='rgba(255,255,255,0.04)'; rr(padL,y,trackW,rowH,rowH/2); ctx.fill();
+    const w=Math.max(rowH,(it.freq/maxFreq)*trackW*prog);
+    ctx.fillStyle=barGradH(padL,padL+w,col); ctx.shadowColor=col; ctx.shadowBlur=14; rr(padL,y,w,rowH,rowH/2); ctx.fill(); ctx.shadowBlur=0;
     ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 13px ui-sans-serif, system-ui';
-    ctx.fillText(it.compPct+'% complete', padL+w+10, y+rowH/2);
+    ctx.fillText(it.compPct+'% complete', padL+w+12, y+rowH/2);
     it._rect=[padL,y,trackW,rowH];
   });
   ctx.restore();
@@ -570,21 +575,24 @@ function buildRange(name) {
 function drawRange(prog) {
   const bins = state.items, n = bins.length;
   if (!n || bins[0].freq===undefined) return; // stale items during a view switch
-  const padL=44, padR=22, padT=28, padB=46, plotW=W-padL-padR, plotH=H-padT-padB;
-  const maxFreq = Math.max(...bins.map(b=>b.freq), 0.01), bw = plotW/n;
+  const padL=44, padR=22, padT=30, padB=46, plotW=W-padL-padR, plotH=H-padT-padB;
+  const maxFreq = Math.max(...bins.map(b=>b.freq), 0.01), slot = plotW/n, bw = slot*0.66;
   ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+  for (let g=1; g<=4; g++){ const y=(H-padB)-(g/4)*plotH; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke(); }
   const x3 = padL + (23.75/RANGE_MAX)*plotW; // 3-point line marker
-  ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.setLineDash([4,4]);
+  ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.setLineDash([4,4]);
   ctx.beginPath(); ctx.moveTo(x3,padT); ctx.lineTo(x3,H-padB); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='center';
-  ctx.fillText('3PT line', x3, padT-6);
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  ctx.fillText('3PT line', x3, padT-8);
   bins.forEach((b,i)=>{
-    const h=(b.freq/maxFreq)*plotH*prog, x=padL+i*bw, y=(H-padB)-h;
-    ctx.fillStyle=ppsColor(b.pps); ctx.shadowColor=ppsColor(b.pps); ctx.shadowBlur=b.n?10:0;
-    rr(x+1.5, y, bw-3, Math.max(0,h), 3); ctx.fill(); ctx.shadowBlur=0;
+    const h=(b.freq/maxFreq)*plotH*prog; if (h<0.8) return;
+    const x=padL+i*slot+(slot-bw)/2, y=(H-padB)-h, col=ppsColor(b.pps);
+    ctx.fillStyle=barGradV(y, H-padB, col); ctx.shadowColor=col; ctx.shadowBlur=12;
+    rr(x, y, bw, h, Math.min(4,bw/2)); ctx.fill(); ctx.shadowBlur=0;
     b._rect=[x, y, bw, h];
   });
-  ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
   for (let ft=0; ft<=RANGE_MAX; ft+=10){ ctx.fillText(ft+' ft', padL+(ft/RANGE_MAX)*plotW, H-padB+16); }
   ctx.restore();
 }
@@ -632,18 +640,23 @@ function buildDamage(name, key) {
 function drawDamage(prog) {
   const fields = state.items;
   if (!fields.length || fields[0].field===undefined) return; // stale items during a view switch
-  const padL=96, padR=68, padT=30, gap=26, rowH=(H-padT*2-gap*2)/3, trackW=W-padL-padR;
+  const padL=100, padR=92, padT=30, gap=36, trackW=W-padL-padR;
+  const rowH=Math.min(40,(H-padT*2-gap*2)/3), totalH=3*rowH+2*gap, startY=padT+((H-padT*2)-totalH)/2;
   const maxTotal = Math.max(...fields.map(f=>f.total), 1);
   const order = [['Out',SPRAY.out],['Single',SPRAY.single],['Double',SPRAY.double],['Home run',SPRAY.hr]];
   ctx.save(); ctx.textBaseline='middle';
   fields.forEach((f,i)=>{
-    const y=padT+i*(rowH+gap);
+    const y=startY+i*(rowH+gap);
     ctx.fillStyle='#cfd6e6'; ctx.font='600 15px ui-sans-serif, system-ui'; ctx.textAlign='right';
     ctx.fillText(f.field+' field', padL-14, y+rowH/2);
-    const barW=(f.total/maxTotal)*trackW*prog; let acc=0;
-    order.forEach(([type,color])=>{ const seg=f.total?(f[type]/f.total)*barW:0; ctx.fillStyle=color; ctx.fillRect(padL+acc, y, seg, rowH); acc+=seg; });
+    ctx.fillStyle='rgba(255,255,255,0.04)'; rr(padL,y,trackW,rowH,rowH/2); ctx.fill();
+    const barW=Math.max(rowH,(f.total/maxTotal)*trackW*prog);
+    ctx.save(); rr(padL,y,barW,rowH,rowH/2); ctx.clip(); // rounded pill; segments fill inside
+    let acc=0;
+    order.forEach(([type,color])=>{ const seg=f.total?(f[type]/f.total)*barW:0; ctx.fillStyle=barGradV(y,y+rowH,color); ctx.fillRect(padL+acc, y, seg+0.6, rowH); acc+=seg; });
+    ctx.restore();
     ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 14px ui-sans-serif, system-ui';
-    ctx.fillText(f.total+' balls · '+f['Home run']+' HR', padL+barW+10, y+rowH/2);
+    ctx.fillText(f.total+' balls · '+f['Home run']+' HR', padL+barW+12, y+rowH/2);
     f._rect=[padL, y, trackW, rowH];
   });
   ctx.restore();
