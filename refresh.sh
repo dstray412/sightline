@@ -21,10 +21,12 @@ count() { node -e "try{const w={};new Function('window',require('fs').readFileSy
 MLB_BEFORE=$(count mlb-data.js SIGHTLINE_MLB pitchers hitters)
 NBA_BEFORE=$(count nba-data.js SIGHTLINE_NBA players)
 NFL_BEFORE=$(count nfl-data.js SIGHTLINE_NFL qbs)
+NHL_BEFORE=$(count nhl-data.js SIGHTLINE_NHL skaters)
 
 node fetch-mlb.mjs --refresh >> refresh.log 2>&1
 node fetch-nba.mjs --refresh >> refresh.log 2>&1
 node fetch-nfl.mjs --refresh >> refresh.log 2>&1
+node fetch-nhl.mjs --refresh >> refresh.log 2>&1
 
 # restore + skip a file whose entity count cratered (guards against wiping history)
 guard() { # name file before after
@@ -37,10 +39,11 @@ guard() { # name file before after
 guard MLB mlb-data.js "$MLB_BEFORE" "$(count mlb-data.js SIGHTLINE_MLB pitchers hitters)"
 guard NBA nba-data.js "$NBA_BEFORE" "$(count nba-data.js SIGHTLINE_NBA players)"
 guard NFL nfl-data.js "$NFL_BEFORE" "$(count nfl-data.js SIGHTLINE_NFL qbs)"
+guard NHL nhl-data.js "$NHL_BEFORE" "$(count nhl-data.js SIGHTLINE_NHL skaters)"
 
 # Commit only the files that actually changed (cratered ones were restored above).
-if ! git diff --quiet -- mlb-data.js nba-data.js nfl-data.js 2>/dev/null; then
-  git add mlb-data.js nba-data.js nfl-data.js
+if ! git diff --quiet -- mlb-data.js nba-data.js nfl-data.js nhl-data.js 2>/dev/null; then
+  git add mlb-data.js nba-data.js nfl-data.js nhl-data.js
   git commit -m "data: daily refresh $(date +%F)" >> refresh.log 2>&1
   echo "committed refreshed data" >> refresh.log
 else
