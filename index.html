@@ -755,17 +755,7 @@ function layoutScatter() {
 }
 
 function computeItems() {
-  const v = state.view;
-  state.items = v==='gravity'   ? buildNBA(state.player).pts
-              : v==='arsenal'   ? buildMLB(state.player)
-              : v==='diet'      ? buildDiet(state.player)
-              : v==='nasty'     ? buildNasty(state.player)
-              : v==='spray'     ? buildSpray(state.player, state.vsPitcher)
-              : v==='range'     ? buildRange(state.player)
-              : v==='evolution' ? buildEvolution(state.player)
-              : v==='damage'    ? buildDamage(state.player, state.vsPitcher)
-              : v==='passmap'   ? buildPassMap(state.player)
-              :                   buildAirYards(state.player);
+  state.items = VIEWS[state.view].build();
   if (isScatter()) layoutScatter();
 }
 function rebuild() {
@@ -780,16 +770,7 @@ function animate() {
   if (el < 1) state.raf = requestAnimationFrame(animate);
 }
 function drawCurrent(prog) {
-  const v = state.view;
-  if (isScatter()) drawScatter(prog);
-  else if (v==='diet') drawDiet(prog);
-  else if (v==='nasty') drawNasty(prog);
-  else if (v==='spray') drawSpray(prog);
-  else if (v==='range') drawRange(prog);
-  else if (v==='evolution') drawEvolution(prog);
-  else if (v==='damage') drawDamage(prog);
-  else if (v==='passmap') drawPassMap(prog);
-  else drawAirYards(prog);
+  VIEWS[state.view].draw(prog);
 }
 // Split the canvas and draw the SAME view for two players, side by side.
 function renderCompareBody(prog) {
@@ -930,9 +911,7 @@ function drawNasty(prog) {
 function resize() {
   const holderW = canvas.parentElement.clientWidth;
   // Portrait phones get taller aspect ratios so charts don't get squished into a thin strip.
-  const aspD = { gravity:0.82, diet:0.5, arsenal:0.72, nasty:0.62, spray:0.92, range:0.6, evolution:0.6, damage:0.5, passmap:0.92, airyards:0.5 };
-  const aspM = { gravity:1.02, diet:0.95, arsenal:0.98, nasty:0.92, spray:1.14, range:0.92, evolution:0.86, damage:0.9, passmap:1.2, airyards:0.86 };
-  const asp = (holderW < 560 ? aspM : aspD)[state.view];
+  const asp = (holderW < 560 ? VIEWS[state.view].aspM : VIEWS[state.view].aspD);
   W = holderW; H = Math.round(holderW*asp);
   canvas.width = W*DPR; canvas.height = H*DPR; canvas.style.height = H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -970,113 +949,242 @@ function setInsight() {
       `${state.player}: <b>${a.val}${a.unit}</b> ${a.label}; ${state.playerB}: <b>${b.val}${b.unit}</b>. ${delta}`;
     return;
   }
-  if (v==='gravity') {
-    el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
-      `<b style="color:#c33a46">Deep red</b> spots are where he's hottest — scores the most, so defenders have to guard him tight there. ` +
-      `<b style="color:#8fbce8">Light blue</b> spots are cold — he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
-  } else if (v==='diet') {
-    const top = [...buildDiet(state.player)].sort((a,b)=>b.freq-a.freq)[0];
-    el.innerHTML = `This shows what kinds of shots <span class="k">${state.player}</span> likes to take. ` +
-      `The <b>longer the bar</b>, the more often he shoots from there. The <b>color</b> shows how good he is at it — ` +
-      `<b style="color:#c33a46">deep red</b> means hot (great), <b style="color:#8fbce8">light blue</b> means cold (he misses a lot). Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
-  } else if (v==='arsenal') {
-    const pp = pitcherPitches(state.player);
-    const best = [...pp].sort((a,b)=>b.whiff-a.whiff)[0];
-    const topVelo = Math.max(...pp.map(x=>x.velo));
-    el.innerHTML = `Every dot is one pitch <span class="k">${state.player}</span> throws, and each color is a different kind of pitch. ` +
-      `The chart shows how much each pitch <b>curves and drops</b> before it reaches the batter. ` +
-      `His fastest pitch hits <b>${topVelo} mph</b>, and the toughest one to hit is his <b>${best.t}</b> — batters swing and miss it the most.`;
-  } else if (v==='nasty') {
-    const best = [...pitcherPitches(state.player)].sort((a,b)=>b.whiff-a.whiff)[0];
-    el.innerHTML = `Each circle is one of <span class="k">${state.player}</span>'s pitches. ` +
-      `The <b>higher up</b> it sits, the more batters swing and miss. The <b>farther right</b>, the faster it is. ` +
-      `So pitches in the <b>top-right corner are the nastiest</b>, and a bigger circle means he throws it more. His filthiest pitch is his <b>${best.t}</b>.`;
-  } else if (v==='spray') {
-    const hits = state.items.filter(b=>b.type!=='Out');
-    const meanA = hits.length ? hits.reduce((s,b)=>s+b.a,0)/hits.length : 0;
-    const field = meanA < -8 ? 'left field' : meanA > 8 ? 'right field' : 'up the middle';
-    const hr = state.items.filter(b=>b.type==='Home run').length;
-    const matchLabel = window.__REAL_HITTERS
-      ? ({all:'all pitchers', L:'left-handed pitchers', R:'right-handed pitchers'}[state.vsPitcher] || 'all pitchers')
-      : state.vsPitcher;
-    el.innerHTML = `Every dot is a ball <span class="k">${state.player}</span> hit against <span class="k">${matchLabel}</span>. ` +
-      `<b style="color:#6aa3d8">blue</b> = single, <b style="color:#d8434f">red</b> = double, <b style="color:#c33a46">deep red</b> = home run, <b style="color:#8fbce8">light blue</b> = out. ` +
-      `He does the most damage to <b>${field}</b>${hr?`, including <b>${hr}</b> home run${hr>1?'s':''}`:''}.`;
-  } else if (v==='range') {
-    const bins = state.items;
-    const peak = [...bins].sort((a,b)=>b.freq-a.freq)[0];
-    const from3 = bins.filter(b=>b.d0>=23).reduce((s,b)=>s+b.freq,0);
-    el.innerHTML = `Each glowing ring is a distance from the hoop. <b>Brighter rings</b> = <span class="k">${state.player}</span> shoots more from there; <b>hotter color</b> (toward deep red) = more efficient; cooler (toward light blue) = less. ` +
-      `Most of his shots come from around <b>${peak.d0}–${peak.d0+RANGE_BIN} feet</b>, and <b>${Math.round(from3*100)}%</b> come from three-point range or deeper.`;
-  } else if (v==='evolution') {
-    const yrs = state.items;
-    if (!yrs.length) { el.innerHTML = `No multi-season data for this pitcher yet.`; }
-    else {
-      const first=yrs[0], last=yrs[yrs.length-1], topLast=last.pitches[0];
-      el.innerHTML = `How <span class="k">${state.player}</span>'s pitch mix changed from <b>${first.year}</b> to <b>${last.year}</b>. ` +
-        `Each bar is one season; the colored chunks show how often he threw each pitch. ` +
-        `In ${last.year} his go-to was the <b>${topLast.t}</b> (${Math.round(topLast.use*100)}% of his pitches).`;
-    }
-  } else if (v==='damage') {
-    const fields = state.items;
-    const best = [...fields].sort((a,b)=>b['Home run']-a['Home run'])[0];
-    const matchLabel = window.__REAL_HITTERS
-      ? ({all:'all pitchers', L:'lefties', R:'righties'}[state.vsPitcher] || 'all pitchers')
-      : state.vsPitcher;
-    el.innerHTML = `Where <span class="k">${state.player}</span> does damage against <span class="k">${matchLabel}</span>. Each field wedge glows <b>hotter</b> the more total bases he produces there, and <b>brighter</b> the more balls he hits that way. ` +
-      `His biggest damage zone is <b>${best.field} field</b> (${best['Home run']} home runs there).`;
-  } else if (v==='passmap') {
-    const passes = state.items;
-    const tds = passes.filter(p=>p.out==='TD').length, deep = passes.filter(p=>p.depth>=20).length;
-    el.innerHTML = `Every dot is a pass <span class="k">${state.player}</span> threw. <b style="color:#eef2f9">white</b> = complete, <b style="color:#6f9bd0">blue</b> = incomplete, <b style="color:#f2c94c">gold</b> = touchdown, <b style="color:#e0483f">red</b> = interception. ` +
-      `Left / middle / right shows the target lane; higher up = deeper downfield. <b>${deep}</b> of these throws travelled 20+ yards in the air.`;
-  } else {
-    const d = qbData(state.player);
-    const comp = d ? Math.round(d.depth.reduce((s,b)=>s+b.freq*b.compPct,0)) : 0;
-    const deepPct = d ? Math.round(d.depth.filter(b=>b.label==='20+'||b.label==='15–20').reduce((s,b)=>s+b.freq,0)*100) : 0;
-    el.innerHTML = `How deep <span class="k">${state.player}</span> throws, shown as depth bands on the field (line of scrimmage at the bottom). <b>Brighter bands</b> = he throws there more; <b>hotter color</b> = caught more often. ` +
-      `Overall he completes <b>${comp}%</b>, with <b>${deepPct}%</b> of throws going 15+ yards downfield.`;
-  }
+  VIEWS[v].insight(el);
 }
-function setLegend() {
-  const el = document.getElementById('legend'), v = state.view;
-  if (v==='gravity') {
-    el.innerHTML = `<div class="item">misses a lot <span class="grad"></span> scores a lot</div>
+// ==================================================================
+// VIEW REGISTRY — one entry per view consolidates the per-view code that
+// used to be smeared across computeItems / drawCurrent / setInsight /
+// setLegend / inspectAt / resize / setSeasons. Adding a view = one entry
+// here (plus the trivial VIEW_META/SPORT_VIEWS/ENTITY one-liners above).
+// Placed after all build/draw/field fns and color consts are defined.
+// ==================================================================
+const VIEWS = {
+  gravity: {
+    build: () => buildNBA(state.player).pts,
+    draw: drawScatter,
+    aspD: 0.82, aspM: 1.02,
+    seasons: () => nbaSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">misses a lot <span class="grad"></span> scores a lot</div>
       <div class="item" style="color:var(--muted)">color = how good he is from each spot</div>`;
-  } else if (v==='diet') {
-    el.innerHTML = `<div class="item">bar length = how often he shoots there</div>
+    },
+    insight: (el) => {
+      el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
+        `<b style="color:#c33a46">Deep red</b> spots are where he's hottest — scores the most, so defenders have to guard him tight there. ` +
+        `<b style="color:#8fbce8">Light blue</b> spots are cold — he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
+    },
+    hit: (mx,my) => {
+      let best=null, bd=1e9;
+      for (const p of state.items){ const dx=p.px-mx, dy=p.py-my, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
+      if (best && bd<260){ return { html:`<b>${(best.pps).toFixed(2)}</b> pts/shot · ${Math.round(best.fg*100)}% made`, tx:best.px, ty:best.py }; }
+      return null;
+    },
+  },
+  diet: {
+    build: () => buildDiet(state.player),
+    draw: drawDiet,
+    aspD: 0.5, aspM: 0.95,
+    seasons: () => nbaSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">bar length = how often he shoots there</div>
       <div class="item">poor <span class="grad"></span> great</div>`;
-  } else if (v==='arsenal') {
-    el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('');
-  } else if (v==='nasty') {
-    el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('') +
-      `<div class="item" style="color:var(--muted)">bigger circle = thrown more often</div>`;
-  } else if (v==='range') {
-    el.innerHTML = `<div class="item">less efficient <span class="grad"></span> more efficient</div>
+    },
+    insight: (el) => {
+      const top = [...buildDiet(state.player)].sort((a,b)=>b.freq-a.freq)[0];
+      el.innerHTML = `This shows what kinds of shots <span class="k">${state.player}</span> likes to take. ` +
+        `The <b>longer the bar</b>, the more often he shoots from there. The <b>color</b> shows how good he is at it — ` +
+        `<b style="color:#c33a46">deep red</b> means hot (great), <b style="color:#8fbce8">light blue</b> means cold (he misses a lot). Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
+    },
+    hit: (mx,my) => {
+      for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if(mx>=x&&mx<=x+w&&my>=y&&my<=y+h){ return { html:`<b>${Math.round(it.freq*100)}%</b> of his shots · makes ${it.shootPct}%`, tx:mx, ty:y+h/2 }; } }
+      return null;
+    },
+  },
+  range: {
+    build: () => buildRange(state.player),
+    draw: drawRange,
+    aspD: 0.6, aspM: 0.92,
+    seasons: () => nbaSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">less efficient <span class="grad"></span> more efficient</div>
       <div class="item" style="color:var(--muted)">brightness = how often he shoots from there</div>`;
-  } else if (v==='evolution') {
-    const types = [...new Set(buildEvolution(state.player).flatMap(y=>y.pitches.map(p=>p.t)))];
-    el.innerHTML = types.map(t=>`<div class="item"><span class="dot" style="color:${MLB_TYPES[t]||'#5b8fd6'};background:${MLB_TYPES[t]||'#5b8fd6'}"></span>${t}</div>`).join('') +
-      `<div class="item" style="color:var(--muted)">each bar = one season</div>`;
-  } else if (v==='passmap') {
-    el.innerHTML =
-      `<div class="item"><span class="dot" style="color:${NFL_OUT.C};background:${NFL_OUT.C}"></span>Complete</div>` +
-      `<div class="item"><span class="dot" style="color:${NFL_OUT.I};background:${NFL_OUT.I}"></span>Incomplete</div>` +
-      `<div class="item"><span class="dot" style="color:${NFL_OUT.TD};background:${NFL_OUT.TD}"></span>Touchdown</div>` +
-      `<div class="item"><span class="dot" style="color:${NFL_OUT.INT};background:${NFL_OUT.INT}"></span>Interception</div>`;
-  } else if (v==='airyards') {
-    el.innerHTML = `<div class="item">rarely caught <span class="grad"></span> often caught</div>
-      <div class="item" style="color:var(--muted)">brightness = how often he throws there</div>`;
-  } else if (v==='damage') {
-    el.innerHTML = `<div class="item">less damage <span class="grad"></span> more damage</div>
+    },
+    insight: (el) => {
+      const bins = state.items;
+      const peak = [...bins].sort((a,b)=>b.freq-a.freq)[0];
+      const from3 = bins.filter(b=>b.d0>=23).reduce((s,b)=>s+b.freq,0);
+      el.innerHTML = `Each glowing ring is a distance from the hoop. <b>Brighter rings</b> = <span class="k">${state.player}</span> shoots more from there; <b>hotter color</b> (toward deep red) = more efficient; cooler (toward light blue) = less. ` +
+        `Most of his shots come from around <b>${peak.d0}–${peak.d0+RANGE_BIN} feet</b>, and <b>${Math.round(from3*100)}%</b> come from three-point range or deeper.`;
+    },
+    hit: (mx,my) => {
+      for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if (mx>=x && mx<=x+w && my>=y && my<=y+h){ return { html:`<b>${Math.round(it.freq*100)}%</b> of shots · ${Math.round(it.fg*100)}% made`, tx:x+w/2, ty:y }; } }
+      return null;
+    },
+  },
+  arsenal: {
+    build: () => buildMLB(state.player),
+    draw: drawScatter,
+    aspD: 0.72, aspM: 0.98,
+    seasons: () => pitcherSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('');
+    },
+    insight: (el) => {
+      const pp = pitcherPitches(state.player);
+      const best = [...pp].sort((a,b)=>b.whiff-a.whiff)[0];
+      const topVelo = Math.max(...pp.map(x=>x.velo));
+      el.innerHTML = `Every dot is one pitch <span class="k">${state.player}</span> throws, and each color is a different kind of pitch. ` +
+        `The chart shows how much each pitch <b>curves and drops</b> before it reaches the batter. ` +
+        `His fastest pitch hits <b>${topVelo} mph</b>, and the toughest one to hit is his <b>${best.t}</b> — batters swing and miss it the most.`;
+    },
+    hit: (mx,my) => {
+      let best=null, bd=1e9;
+      for (const p of state.items){ const dx=p.px-mx, dy=p.py-my, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
+      if (best && bd<260){ return { html:`<b>${best.t}</b> · ${best.velo} mph · ${Math.round(best.whiff*100)}% miss`, tx:best.px, ty:best.py }; }
+      return null;
+    },
+  },
+  nasty: {
+    build: () => buildNasty(state.player),
+    draw: drawNasty,
+    aspD: 0.62, aspM: 0.92,
+    seasons: () => pitcherSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('') +
+        `<div class="item" style="color:var(--muted)">bigger circle = thrown more often</div>`;
+    },
+    insight: (el) => {
+      const best = [...pitcherPitches(state.player)].sort((a,b)=>b.whiff-a.whiff)[0];
+      el.innerHTML = `Each circle is one of <span class="k">${state.player}</span>'s pitches. ` +
+        `The <b>higher up</b> it sits, the more batters swing and miss. The <b>farther right</b>, the faster it is. ` +
+        `So pitches in the <b>top-right corner are the nastiest</b>, and a bigger circle means he throws it more. His filthiest pitch is his <b>${best.t}</b>.`;
+    },
+    hit: (mx,my) => {
+      for (const pi of state.items){ const dx=(pi._cx||0)-mx, dy=(pi._cy||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (pi._r||0)){ return { html:`<b>${pi.t}</b> · ${pi.velo} mph · ${Math.round(pi.whiff*100)}% miss`, tx:pi._cx, ty:pi._cy }; } }
+      return null;
+    },
+  },
+  evolution: {
+    build: () => buildEvolution(state.player),
+    draw: drawEvolution,
+    aspD: 0.6, aspM: 0.86,
+    seasons: () => pitcherSeasons(state.player),
+    legend: (el) => {
+      const types = [...new Set(buildEvolution(state.player).flatMap(y=>y.pitches.map(p=>p.t)))];
+      el.innerHTML = types.map(t=>`<div class="item"><span class="dot" style="color:${MLB_TYPES[t]||'#5b8fd6'};background:${MLB_TYPES[t]||'#5b8fd6'}"></span>${t}</div>`).join('') +
+        `<div class="item" style="color:var(--muted)">each bar = one season</div>`;
+    },
+    insight: (el) => {
+      const yrs = state.items;
+      if (!yrs.length) { el.innerHTML = `No multi-season data for this pitcher yet.`; }
+      else {
+        const first=yrs[0], last=yrs[yrs.length-1], topLast=last.pitches[0];
+        el.innerHTML = `How <span class="k">${state.player}</span>'s pitch mix changed from <b>${first.year}</b> to <b>${last.year}</b>. ` +
+          `Each bar is one season; the colored chunks show how often he threw each pitch. ` +
+          `In ${last.year} his go-to was the <b>${topLast.t}</b> (${Math.round(topLast.use*100)}% of his pitches).`;
+      }
+    },
+    hit: (mx,my) => null,
+  },
+  spray: {
+    build: () => buildSpray(state.player, state.vsPitcher),
+    draw: drawSpray,
+    aspD: 0.92, aspM: 1.14,
+    seasons: () => hitterSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML =
+        `<div class="item"><span class="dot" style="color:${SPRAY.out};background:${SPRAY.out}"></span>Out</div>` +
+        `<div class="item"><span class="dot" style="color:${SPRAY.single};background:${SPRAY.single}"></span>Single</div>` +
+        `<div class="item"><span class="dot" style="color:${SPRAY.double};background:${SPRAY.double}"></span>Double</div>` +
+        `<div class="item"><span class="dot" style="color:${SPRAY.hr};background:${SPRAY.hr}"></span>Home run</div>`;
+    },
+    insight: (el) => {
+      const hits = state.items.filter(b=>b.type!=='Out');
+      const meanA = hits.length ? hits.reduce((s,b)=>s+b.a,0)/hits.length : 0;
+      const field = meanA < -8 ? 'left field' : meanA > 8 ? 'right field' : 'up the middle';
+      const hr = state.items.filter(b=>b.type==='Home run').length;
+      const matchLabel = window.__REAL_HITTERS
+        ? ({all:'all pitchers', L:'left-handed pitchers', R:'right-handed pitchers'}[state.vsPitcher] || 'all pitchers')
+        : state.vsPitcher;
+      el.innerHTML = `Every dot is a ball <span class="k">${state.player}</span> hit against <span class="k">${matchLabel}</span>. ` +
+        `<b style="color:#6aa3d8">blue</b> = single, <b style="color:#d8434f">red</b> = double, <b style="color:#c33a46">deep red</b> = home run, <b style="color:#8fbce8">light blue</b> = out. ` +
+        `He does the most damage to <b>${field}</b>${hr?`, including <b>${hr}</b> home run${hr>1?'s':''}`:''}.`;
+    },
+    hit: (mx,my) => {
+      for (const b of state.items){ const dx=(b._x||0)-mx, dy=(b._y||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (b._r||0)+2){ return { html:`<b>${b.type}</b> · ${Math.round(b.dist)} ft`, tx:b._x, ty:b._y }; } }
+      return null;
+    },
+  },
+  damage: {
+    build: () => buildDamage(state.player, state.vsPitcher),
+    draw: drawDamage,
+    aspD: 0.5, aspM: 0.9,
+    seasons: () => hitterSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">less damage <span class="grad"></span> more damage</div>
       <div class="item" style="color:var(--muted)">brightness = how many balls he hits that way</div>`;
-  } else { // spray shares outcome colors
-    el.innerHTML =
-      `<div class="item"><span class="dot" style="color:${SPRAY.out};background:${SPRAY.out}"></span>Out</div>` +
-      `<div class="item"><span class="dot" style="color:${SPRAY.single};background:${SPRAY.single}"></span>Single</div>` +
-      `<div class="item"><span class="dot" style="color:${SPRAY.double};background:${SPRAY.double}"></span>Double</div>` +
-      `<div class="item"><span class="dot" style="color:${SPRAY.hr};background:${SPRAY.hr}"></span>Home run</div>`;
-  }
+    },
+    insight: (el) => {
+      const fields = state.items;
+      const best = [...fields].sort((a,b)=>b['Home run']-a['Home run'])[0];
+      const matchLabel = window.__REAL_HITTERS
+        ? ({all:'all pitchers', L:'lefties', R:'righties'}[state.vsPitcher] || 'all pitchers')
+        : state.vsPitcher;
+      el.innerHTML = `Where <span class="k">${state.player}</span> does damage against <span class="k">${matchLabel}</span>. Each field wedge glows <b>hotter</b> the more total bases he produces there, and <b>brighter</b> the more balls he hits that way. ` +
+        `His biggest damage zone is <b>${best.field} field</b> (${best['Home run']} home runs there).`;
+    },
+    hit: (mx,my) => {
+      for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if (mx>=x && mx<=x+w && my>=y && my<=y+h){ return { html:`${it.field}: <b>${it.total}</b> balls · ${it['Home run']} HR`, tx:mx, ty:y+h/2 }; } }
+      return null;
+    },
+  },
+  passmap: {
+    build: () => buildPassMap(state.player),
+    draw: drawPassMap,
+    aspD: 0.92, aspM: 1.2,
+    seasons: () => qbSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML =
+        `<div class="item"><span class="dot" style="color:${NFL_OUT.C};background:${NFL_OUT.C}"></span>Complete</div>` +
+        `<div class="item"><span class="dot" style="color:${NFL_OUT.I};background:${NFL_OUT.I}"></span>Incomplete</div>` +
+        `<div class="item"><span class="dot" style="color:${NFL_OUT.TD};background:${NFL_OUT.TD}"></span>Touchdown</div>` +
+        `<div class="item"><span class="dot" style="color:${NFL_OUT.INT};background:${NFL_OUT.INT}"></span>Interception</div>`;
+    },
+    insight: (el) => {
+      const passes = state.items;
+      const tds = passes.filter(p=>p.out==='TD').length, deep = passes.filter(p=>p.depth>=20).length;
+      el.innerHTML = `Every dot is a pass <span class="k">${state.player}</span> threw. <b style="color:#eef2f9">white</b> = complete, <b style="color:#6f9bd0">blue</b> = incomplete, <b style="color:#f2c94c">gold</b> = touchdown, <b style="color:#e0483f">red</b> = interception. ` +
+        `Left / middle / right shows the target lane; higher up = deeper downfield. <b>${deep}</b> of these throws travelled 20+ yards in the air.`;
+    },
+    hit: (mx,my) => {
+      for (const b of state.items){ const dx=(b._x||0)-mx, dy=(b._y||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (b._r||0)+2){ return { html:`<b>${({C:'Complete',I:'Incomplete',TD:'Touchdown',INT:'Interception'})[b.out]}</b> · ${b.depth} yd air`, tx:b._x, ty:b._y }; } }
+      return null;
+    },
+  },
+  airyards: {
+    build: () => buildAirYards(state.player),
+    draw: drawAirYards,
+    aspD: 0.5, aspM: 0.86,
+    seasons: () => qbSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">rarely caught <span class="grad"></span> often caught</div>
+      <div class="item" style="color:var(--muted)">brightness = how often he throws there</div>`;
+    },
+    insight: (el) => {
+      const d = qbData(state.player);
+      const comp = d ? Math.round(d.depth.reduce((s,b)=>s+b.freq*b.compPct,0)) : 0;
+      const deepPct = d ? Math.round(d.depth.filter(b=>b.label==='20+'||b.label==='15–20').reduce((s,b)=>s+b.freq,0)*100) : 0;
+      el.innerHTML = `How deep <span class="k">${state.player}</span> throws, shown as depth bands on the field (line of scrimmage at the bottom). <b>Brighter bands</b> = he throws there more; <b>hotter color</b> = caught more often. ` +
+        `Overall he completes <b>${comp}%</b>, with <b>${deepPct}%</b> of throws going 15+ yards downfield.`;
+    },
+    hit: (mx,my) => {
+      for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if (mx>=x && mx<=x+w && my>=y && my<=y+h){ return { html:`<b>${it.label} yd</b> · ${Math.round(it.freq*100)}% of throws · ${it.compPct}% complete`, tx:mx, ty:y+h/2 }; } }
+      return null;
+    },
+  },
+};
+function setLegend() {
+  VIEWS[state.view].legend(document.getElementById('legend'));
 }
 function chipData() {
   const e = ENTITY[state.view];
@@ -1105,11 +1213,7 @@ function setMatchup() {
 }
 function setSeasons() {
   const el = document.getElementById('seasons');
-  const ys = (state.view==='arsenal' || state.view==='nasty') ? pitcherSeasons(state.player)
-           : (state.view==='spray' || state.view==='damage') ? hitterSeasons(state.player)
-           : (state.view==='gravity' || state.view==='diet' || state.view==='range') ? nbaSeasons(state.player)
-           : (state.view==='passmap' || state.view==='airyards') ? qbSeasons(state.player)
-           : null;
+  const ys = VIEWS[state.view].seasons();
   if (!ys || ys.length<=1) { el.style.display='none'; el.innerHTML=''; return; }
   if (!ys.includes(state.season)) state.season = ys[ys.length-1];
   el.style.display='flex';
@@ -1151,31 +1255,9 @@ function setTitles() {
 function inspectAt(clientX, clientY){
   if (state.compare && state.playerB && state.playerB!==state.player) { tip.style.opacity=0; return; }
   const rect = canvas.getBoundingClientRect();
-  const mx = clientX-rect.left, my = clientY-rect.top, v = state.view;
-  let html=null, tx=0, ty=0;
-  if (isScatter()) {
-    let best=null, bd=1e9;
-    for (const p of state.items){ const dx=p.px-mx, dy=p.py-my, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
-    if (best && bd<260){ tx=best.px; ty=best.py;
-      html = v==='gravity' ? `<b>${(best.pps).toFixed(2)}</b> pts/shot · ${Math.round(best.fg*100)}% made`
-                           : `<b>${best.t}</b> · ${best.velo} mph · ${Math.round(best.whiff*100)}% miss`; }
-  } else if (v==='diet') {
-    for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if(mx>=x&&mx<=x+w&&my>=y&&my<=y+h){ tx=mx; ty=y+h/2; html=`<b>${Math.round(it.freq*100)}%</b> of his shots · makes ${it.shootPct}%`; break; } }
-  } else if (v==='nasty') {
-    for (const pi of state.items){ const dx=(pi._cx||0)-mx, dy=(pi._cy||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (pi._r||0)){ tx=pi._cx; ty=pi._cy; html=`<b>${pi.t}</b> · ${pi.velo} mph · ${Math.round(pi.whiff*100)}% miss`; break; } }
-  } else if (v==='spray' || v==='passmap') {
-    for (const b of state.items){ const dx=(b._x||0)-mx, dy=(b._y||0)-my; if (Math.sqrt(dx*dx+dy*dy) <= (b._r||0)+2){ tx=b._x; ty=b._y;
-      html = v==='spray' ? `<b>${b.type}</b> · ${Math.round(b.dist)} ft`
-                         : `<b>${({C:'Complete',I:'Incomplete',TD:'Touchdown',INT:'Interception'})[b.out]}</b> · ${b.depth} yd air`;
-      break; } }
-  } else if (v==='range' || v==='damage' || v==='airyards') {
-    for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0]; if (mx>=x && mx<=x+w && my>=y && my<=y+h){
-      if (v==='range'){ tx=x+w/2; ty=y; html=`<b>${Math.round(it.freq*100)}%</b> of shots · ${Math.round(it.fg*100)}% made`; }
-      else if (v==='airyards'){ tx=mx; ty=y+h/2; html=`<b>${it.label} yd</b> · ${Math.round(it.freq*100)}% of throws · ${it.compPct}% complete`; }
-      else { tx=mx; ty=y+h/2; html=`${it.field}: <b>${it.total}</b> balls · ${it['Home run']} HR`; }
-      break; } }
-  }
-  if (html){ tip.style.opacity=1; tip.style.left=tx+'px'; tip.style.top=ty+'px'; tip.innerHTML=html; }
+  const mx = clientX-rect.left, my = clientY-rect.top;
+  const r = VIEWS[state.view].hit(mx, my);
+  if (r && r.html){ tip.style.opacity=1; tip.style.left=r.tx+'px'; tip.style.top=r.ty+'px'; tip.innerHTML=r.html; }
   else tip.style.opacity=0;
 }
 canvas.addEventListener('mousemove', e=>inspectAt(e.clientX, e.clientY));
