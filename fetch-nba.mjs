@@ -1,16 +1,13 @@
 // Pulls REAL NBA shot data (public GitHub dataset) by season and writes nba-data.js.
 // stats.nba.com blocks datacenter IPs, so we use DomSamangy/NBA_Shots_04_25 (every shot, by season).
 // Run:  node fetch-nba.mjs      (Node 18+, no installs — unzips with built-in zlib)
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
+import { splitCsv, sample, loadExisting, mergeSeasons, nbaShotCoord, NBA_ZONE_AREA as ZONE_AREA, HOOP_Y } from "./pipeline.mjs";
 
 // `--refresh` = pull ONLY the current season and merge into existing data (fast daily update).
 const REFRESH = process.argv.includes("--refresh");
 const CURRENT_SEASON = new Date().getFullYear();
-function loadExisting(path){
-  try { const w={}; new Function("window", readFileSync(path,"utf8"))(w); return w.SIGHTLINE_NBA; }
-  catch { return null; }
-}
 
 const SEASONS = [2021, 2022, 2023, 2024, 2025, 2026]; // 2026 skipped automatically until the dataset adds it
 const zipUrl = (s) => `https://raw.githubusercontent.com/DomSamangy/NBA_Shots_04_25/main/NBA_${s}_Shots.csv.zip`;
@@ -22,23 +19,9 @@ const PLAYERS = [
   "Devin Booker", "Jalen Brunson", "Donovan Mitchell",
 ];
 
-const ZONE_AREA = {
-  "Restricted Area": "At the rim",
-  "In The Paint (Non-RA)": "Close range",
-  "Mid-Range": "Mid-range",
-  "Left Corner 3": "3-pointers", "Right Corner 3": "3-pointers", "Above the Break 3": "3-pointers",
-};
+// ZONE_AREA (as NBA_ZONE_AREA), HOOP_Y, splitCsv, sample, loadExisting, mergeSeasons, nbaShotCoord: from ./pipeline.mjs
 const AREAS = ["At the rim", "Close range", "Mid-range", "3-pointers"];
-const HOOP_Y = 5.25;
 
-function splitCsv(line){
-  const out=[]; let cur="", q=false;
-  for (let i=0;i<line.length;i++){ const c=line[i];
-    if (q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
-    else { if(c==='"') q=true; else if(c===',') {out.push(cur);cur="";} else cur+=c; }
-  }
-  out.push(cur); return out;
-}
 function unzipSingle(buf){
   if (buf.readUInt32LE(0) !== 0x04034b50) throw new Error("not a zip file");
   const method = buf.readUInt16LE(8);
@@ -48,12 +31,6 @@ function unzipSingle(buf){
   if (compSize === 0) { const cd = buf.indexOf(Buffer.from([0x50,0x4b,0x01,0x02])); compSize = buf.readUInt32LE(cd + 20); }
   const comp = buf.subarray(start, start + compSize);
   return method === 0 ? comp : inflateRawSync(comp);
-}
-function sample(arr, max){
-  if (arr.length <= max) return arr;
-  const step = arr.length / max, out = [];
-  for (let i=0; i<arr.length; i+=step) out.push(arr[Math.floor(i)]);
-  return out;
 }
 
 const want = new Set(PLAYERS);
@@ -69,8 +46,8 @@ function aggregateSeason(csv){
     const r = splitCsv(lines[i]);
     const name = r[col.PLAYER_NAME]; if (!want.has(name)) continue;
     const zone = r[col.BASIC_ZONE]; if (zone === "Backcourt" || !ZONE_AREA[zone]) continue;
-    const x = +r[col.LOC_X], y = +r[col.LOC_Y] - HOOP_Y;
-    if (!isFinite(x) || !isFinite(y) || y < -2 || y > 42) continue;
+    const c = nbaShotCoord(r[col.LOC_X], r[col.LOC_Y]); if (!c) continue;
+    const x = c.x, y = c.y;
     const pv = (r[col.SHOT_TYPE]||"").startsWith("3") ? 3 : 2;
     const made = r[col.SHOT_MADE] === "TRUE" ? 1 : 0;
     (acc[name] ||= { zones:{}, raw:[] });
@@ -111,11 +88,8 @@ for (const season of (REFRESH ? [CURRENT_SEASON] : SEASONS)){
 
 let result = { players };
 if (REFRESH) {
-  const ex = loadExisting("nba-data.js");
-  if (ex && ex.players) {
-    for (const [n,d] of Object.entries(players)) { (ex.players[n] ||= {seasons:{}}); Object.assign(ex.players[n].seasons, d.seasons); }
-    result = ex;
-  }
+  const ex = loadExisting("nba-data.js", "SIGHTLINE_NBA");
+  if (ex && ex.players) { mergeSeasons(ex.players, players); result = ex; }
 }
 writeFileSync("nba-data.js", "window.SIGHTLINE_NBA = " + JSON.stringify(result, null, 0) + ";\n");
 console.log(`\nWrote nba-data.js${REFRESH?` (refreshed ${CURRENT_SEASON} only)`:``}: ${Object.keys(result.players).length} players.`);

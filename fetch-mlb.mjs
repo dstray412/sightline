@@ -1,15 +1,12 @@
 // Pulls REAL MLB Statcast data and writes mlb-data.js for the SIGHTLINE prototype.
 // Run:  node fetch-mlb.mjs      (Node 18+, uses built-in fetch — no installs)
 // Produces: mlb-data.js  ->  window.SIGHTLINE_MLB = { pitchers: {...} }
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { splitCsv, sample, loadExisting, mergeSeasons, hitAngle, outcomeOf, pitchBreak } from "./pipeline.mjs";
 
 // `--refresh` = pull ONLY the current season and merge into existing data (fast daily update).
 const REFRESH = process.argv.includes("--refresh");
 const CURRENT_SEASON = new Date().getFullYear();
-function loadExisting(path){
-  try { const w={}; new Function("window", readFileSync(path,"utf8"))(w); return w.SIGHTLINE_MLB; }
-  catch { return null; }
-}
 
 // Seasons to pull for each pitcher (kept only if the pitcher actually threw that year).
 const SEASONS = [2021, 2022, 2023, 2024, 2025, 2026];
@@ -50,21 +47,7 @@ const PITCH = {
   CH:["Changeup","#42d98a"], FS:["Splitter","#9ae66e"], FO:["Splitter","#9ae66e"],
 };
 
-// minimal CSV line splitter (handles quoted fields)
-function splitCsv(line){
-  const out=[]; let cur="", q=false;
-  for (let i=0;i<line.length;i++){ const c=line[i];
-    if (q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
-    else { if(c==='"') q=true; else if(c===',') {out.push(cur);cur="";} else cur+=c; }
-  }
-  out.push(cur); return out;
-}
-function sample(arr, max){
-  if (arr.length <= max) return arr;
-  const step = arr.length / max, out = [];
-  for (let i=0; i<arr.length; i+=step) out.push(arr[Math.floor(i)]);
-  return out;
-}
+// splitCsv / sample / loadExisting / mergeSeasons / hitAngle / outcomeOf / pitchBreak: from ./pipeline.mjs
 
 async function fetchPitcher(p, season){
   const url = `https://baseballsavant.mlb.com/statcast_search/csv?all=true&type=details`
@@ -96,14 +79,15 @@ async function fetchPitcher(p, season){
   const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
   const pitches = Object.entries(groups)
     .filter(([,g])=>g.n >= Math.max(30, total*0.02)) // drop rare/mislabeled
-    .map(([code,g])=>({
-      t: PITCH[code][0],
-      hb: +( -avg(g.hx) * 12 ).toFixed(1),   // feet->inches; sign flip => arm-side positive
-      vb: +( avg(g.vz) * 12 ).toFixed(1),     // induced vertical (ride positive)
-      velo: Math.round(avg(g.velo)),
-      use: +(g.n/total).toFixed(3),
-      whiff: +(g.swings ? g.whiffs/g.swings : 0).toFixed(3),
-    }))
+    .map(([code,g])=>{
+      const { hb, vb } = pitchBreak(avg(g.hx), avg(g.vz)); // feet->inches, arm-side +, ride +
+      return {
+        t: PITCH[code][0], hb, vb,
+        velo: Math.round(avg(g.velo)),
+        use: +(g.n/total).toFixed(3),
+        whiff: +(g.swings ? g.whiffs/g.swings : 0).toFixed(3),
+      };
+    })
     .sort((a,b)=>b.use-a.use);
   // merge same display-name (e.g., KC+CU both Curveball) — keep by usage
   const merged={};
@@ -111,14 +95,6 @@ async function fetchPitcher(p, season){
   return { name:p.name, total, pitches:Object.values(merged) };
 }
 
-// events -> our 4 outcome buckets (null = not a batted ball we chart)
-function outcomeOf(ev){
-  if (ev==='single') return 'Single';
-  if (ev==='double' || ev==='triple') return 'Double';
-  if (ev==='home_run') return 'Home run';
-  if (/out|play|choice|error|sac/.test(ev)) return 'Out';
-  return null;
-}
 async function fetchHitter(h, season){
   const url = `https://baseballsavant.mlb.com/statcast_search/csv?all=true&type=details`
     + `&hfSea=${season}%7C&hfGT=R%7C&player_type=batter&batters_lookup%5B%5D=${h.id}`;
@@ -131,10 +107,8 @@ async function fetchHitter(h, season){
   for (let i=1;i<lines.length;i++){
     const r = splitCsv(lines[i]);
     const type = outcomeOf(r[col.events]); if (!type) continue;
-    const hx=+r[col.hc_x], hy=+r[col.hc_y]; if (!isFinite(hx)||!isFinite(hy)) continue;
-    let a = Math.atan2(hx-125.42, 198.27-hy) * 180/Math.PI;      // 0=center, neg=left field, pos=right
-    if (!isFinite(a) || Math.abs(a)>48) continue;                 // drop fouls
-    a = Math.max(-47, Math.min(47, a));
+    const hx=+r[col.hc_x], hy=+r[col.hc_y];
+    const a = hitAngle(hx, hy); if (a===null) continue;           // null = non-finite input or foul
     let dist = hd!==undefined ? +r[hd] : NaN;
     if (!isFinite(dist) || dist<=0) dist = Math.min(250, Math.sqrt((hx-125.42)**2 + (hy-198.27)**2) * 2.2);
     balls.push({ a:Math.round(a), dist:Math.min(445,Math.round(dist)), type, hand:(r[col.p_throws]||'R') });
@@ -174,12 +148,8 @@ for (const h of HITTERS){
 
 let result = { pitchers: out, hitters };
 if (REFRESH) {
-  const ex = loadExisting("mlb-data.js");
-  if (ex && ex.pitchers && ex.hitters) {
-    for (const [n,d] of Object.entries(out))     { (ex.pitchers[n] ||= {seasons:{}}); Object.assign(ex.pitchers[n].seasons, d.seasons); }
-    for (const [n,d] of Object.entries(hitters)) { (ex.hitters[n]  ||= {seasons:{}}); Object.assign(ex.hitters[n].seasons,  d.seasons); }
-    result = ex;
-  }
+  const ex = loadExisting("mlb-data.js", "SIGHTLINE_MLB");
+  if (ex && ex.pitchers && ex.hitters) { mergeSeasons(ex.pitchers, out); mergeSeasons(ex.hitters, hitters); result = ex; }
 }
 writeFileSync("mlb-data.js", "window.SIGHTLINE_MLB = " + JSON.stringify(result, null, 0) + ";\n");
 console.log(`\nWrote mlb-data.js${REFRESH?` (refreshed ${CURRENT_SEASON} only)`:``}: ${Object.keys(result.pitchers).length} pitchers, ${Object.keys(result.hitters).length} hitters.`);

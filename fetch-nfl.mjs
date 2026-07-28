@@ -1,7 +1,8 @@
 // Pulls REAL NFL play-by-play (nflverse) and writes nfl-data.js.
 // Run:  node fetch-nfl.mjs   (or --refresh for current season only). Node 18+, no installs.
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
+import { splitCsv, sample, loadExisting, mergeSeasons, nflOutcome, nflLane } from "./pipeline.mjs";
 
 const SEASONS = [2022, 2023, 2024, 2025];
 const pbpUrl = s => `https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${s}.csv.gz`;
@@ -18,16 +19,7 @@ const BUCKETS = [
   { label:"10–15", lo:10, hi:15 }, { label:"15–20", lo:15, hi:20 }, { label:"20+", lo:20, hi:999 },
 ];
 
-function splitCsv(line){
-  const out=[]; let cur="", q=false;
-  for (let i=0;i<line.length;i++){ const c=line[i];
-    if (q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
-    else { if(c==='"') q=true; else if(c===',') {out.push(cur);cur="";} else cur+=c; }
-  }
-  out.push(cur); return out;
-}
-function sample(arr, max){ if(arr.length<=max) return arr; const step=arr.length/max, o=[]; for(let i=0;i<arr.length;i+=step) o.push(arr[Math.floor(i)]); return o; }
-function loadExisting(path){ try{ const w={}; new Function("window", readFileSync(path,"utf8"))(w); return w.SIGHTLINE_NFL; } catch { return null; } }
+// splitCsv / sample / loadExisting / mergeSeasons / nflOutcome / nflLane are imported from ./pipeline.mjs
 
 function aggregateSeason(csv, want){
   const lines = csv.split(/\r?\n/);
@@ -43,8 +35,8 @@ function aggregateSeason(csv, want){
     const loc = r[col.pass_location]; if (loc!=="left" && loc!=="middle" && loc!=="right") continue;
     const ay = +r[col.air_yards]; if (!isFinite(ay)) continue;
     const td = r[col.pass_touchdown]==="1", intc = r[col.interception]==="1", comp = r[col.complete_pass]==="1";
-    const out = td?"TD":intc?"INT":comp?"C":"I";
-    const lane = loc==="left"?-1:loc==="right"?1:0;
+    const out = nflOutcome(td, intc, comp);
+    const lane = nflLane(loc);
     (acc[qb] ||= { passes:[], buckets:BUCKETS.map(b=>({...b, att:0, comp:0})) });
     const a=acc[qb];
     a.passes.push([lane, Math.round(ay), out]);
@@ -75,8 +67,8 @@ for (const season of (REFRESH ? [CURRENT_SEASON] : SEASONS)){
 
 let result = { qbs };
 if (REFRESH){
-  const ex = loadExisting("nfl-data.js");
-  if (ex && ex.qbs){ for (const [n,d] of Object.entries(qbs)){ (ex.qbs[n] ||= {seasons:{}}); Object.assign(ex.qbs[n].seasons, d.seasons); } result = ex; }
+  const ex = loadExisting("nfl-data.js", "SIGHTLINE_NFL");
+  if (ex && ex.qbs){ mergeSeasons(ex.qbs, qbs); result = ex; }
 }
 writeFileSync("nfl-data.js", "window.SIGHTLINE_NFL = " + JSON.stringify(result, null, 0) + ";\n");
 console.log(`\nWrote nfl-data.js${REFRESH?` (refreshed ${CURRENT_SEASON} only)`:``}: ${Object.keys(result.qbs).length} QBs.`);
