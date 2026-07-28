@@ -4,10 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SIGHTLINE — sports data, seen differently</title>
+<!-- Display typeface, self-hosted (works offline + hosted; no external dependency). -->
+<link href="fonts/space-grotesk.css" rel="stylesheet">
 <style>
   :root {
     --bg: #07080c; --panel: rgba(255,255,255,0.04); --line: rgba(255,255,255,0.09);
-    --text: #eef1f7; --muted: #8b93a7; --accent: #38e1ff; --accent2: #7c5cff;
+    --text: #eef1f7; --muted: #a6b0c4; --accent: #38e1ff; --accent2: #7c5cff;
+    --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
@@ -22,7 +25,7 @@
   }
   .wrap { max-width: 1040px; margin: 0 auto; padding: 26px 24px 60px; }
   header { display: flex; align-items: center; gap: 16px; margin-bottom: 6px; }
-  .logo { font-weight: 800; letter-spacing: .14em; font-size: 20px;
+  .logo { font-family: var(--display); font-weight: 700; letter-spacing: .14em; font-size: 20px;
     background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .tag { color: var(--muted); font-size: 13px; letter-spacing: .02em; }
   .sports { margin-left: auto; display: flex; gap: 6px; background: var(--panel);
@@ -36,8 +39,8 @@
   .stage { margin-top: 22px; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
     border: 1px solid var(--line); border-radius: 20px; padding: 20px; position: relative; overflow: hidden; }
   .toprow { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
-  .subtitle { font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
-  .viztitle { font-size: 22px; font-weight: 800; margin: 2px 0 0; }
+  .subtitle { font-family: var(--display); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .viztitle { font-family: var(--display); font-size: 24px; font-weight: 700; letter-spacing: -.01em; margin: 2px 0 0; }
   .chips { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
   .chip { padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px;
     background: var(--panel); border: 1px solid var(--line); color: var(--muted); transition: .16s; }
@@ -61,6 +64,11 @@
     color: var(--text); border-color: transparent; box-shadow: inset 0 0 0 1px var(--line); }
   .cmp-toggle:not(.active):hover { color: var(--text); }
 
+  /* Accessibility: bigger touch targets + a visible keyboard focus ring (was hover-only). */
+  .sport, .chip, .viewbtn, .cmp-toggle { min-height: 40px; }
+  .sport:focus-visible, .chip:focus-visible, .viewbtn:focus-visible, .cmp-toggle:focus-visible, .sport:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; }
+
   .canvas-holder { position: relative; width: 100%; }
   canvas { width: 100%; display: block; border-radius: 14px; }
   .tooltip { position: absolute; pointer-events: none; opacity: 0; transform: translate(-50%,-120%);
@@ -68,11 +76,15 @@
     font-size: 12.5px; white-space: nowrap; box-shadow: 0 10px 30px rgba(0,0,0,.5); transition: opacity .12s; z-index: 4; }
   .tooltip b { color: var(--accent); }
 
-  .insight { margin-top: 14px; padding: 13px 16px; border-radius: 12px; background: var(--panel);
-    border: 1px solid var(--line); font-size: 14.5px; }
+  /* The insight is the product's core promise (plain-English takeaway) — give it real presence, not fine print. */
+  .insight { margin-top: 16px; padding: 15px 18px; border-radius: 12px;
+    background: linear-gradient(180deg, rgba(56,225,255,.06), rgba(255,255,255,.015));
+    border: 1px solid var(--line); font-size: 16px; line-height: 1.6; color: var(--text); }
+  .insight::before { content: "THE READ"; display: block; font-family: var(--display);
+    font-size: 10.5px; letter-spacing: .2em; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
   .insight .k { color: var(--accent); font-weight: 700; }
 
-  .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 14px; font-size: 12.5px; color: var(--muted); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
   .legend .item { display: flex; align-items: center; gap: 7px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
   .grad { width: 120px; height: 10px; border-radius: 6px;
@@ -98,8 +110,9 @@
     .views { gap: 5px; }
     .viewbtn { padding: 7px 11px; font-size: 12px; }
     .cmp-toggle { padding: 6px 11px; font-size: 12px; }
-    .insight { margin-top: 12px; padding: 11px 13px; font-size: 13.5px; }
-    .legend { margin-top: 12px; gap: 9px 12px; font-size: 11.5px; }
+    .chip, .viewbtn, .sport, .cmp-toggle { min-height: 44px; } /* 44px touch minimum on phones */
+    .insight { margin-top: 12px; padding: 13px 15px; font-size: 15px; }
+    .legend { margin-top: 12px; gap: 9px 12px; font-size: 12.5px; }
     .grad { width: 92px; }
     footer { margin-top: 16px; font-size: 11px; }
   }
@@ -137,7 +150,7 @@
     <div class="matchup" id="matchup"></div>
 
     <div class="canvas-holder">
-      <canvas id="viz"></canvas>
+      <canvas id="viz" role="img" aria-label="Sports data visualization"></canvas>
       <div class="tooltip" id="tip"></div>
     </div>
 
@@ -839,12 +852,31 @@ function drawOverlay(prog) {
   else { A.forEach((d,i)=>{ ctx.fillText(d.label, padL+i*groupW+groupW/2, H-padB+16); }); }
   ctx.restore();
 }
+// No-data state: show a real message, not a blank canvas (injured player, filtered-out
+// matchup, or a season the feed hasn't published yet).
+function viewHasData(){
+  const it = state.items;
+  if (!it || !it.length) return false;
+  if (state.view==='diet' || state.view==='range' || state.view==='airyards') return it.some(b=>b.freq>0);
+  if (state.view==='damage') return it.some(f=>f.total>0);
+  return true;
+}
+function drawEmptyState(){
+  ctx.save(); ctx.textAlign='center';
+  ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.font="600 18px 'Space Grotesk', ui-sans-serif, system-ui";
+  ctx.fillText(`No data for ${state.player} here`, W/2, H/2 - 6);
+  ctx.fillStyle='rgba(255,255,255,0.34)'; ctx.font="14px ui-sans-serif, system-ui";
+  ctx.fillText('Try another season, player, or matchup.', W/2, H/2 + 18);
+  ctx.restore();
+}
 function render(prog) {
   if (W<=0 || H<=0) return; // canvas not sized yet (init runs before first resize) — drawing now throws
   ctx.clearRect(0,0,W,H);
   if (state.compare && state.playerB && state.playerB!==state.player) {
     if (state.overlay && OVERLAY_VIEWS.has(state.view)) drawOverlay(prog);
     else renderCompareBody(prog);
+  } else if (!viewHasData()) {
+    drawEmptyState();
   } else drawCurrent(prog);
 }
 
@@ -964,9 +996,11 @@ function setInsight() {
       : `<b>${state.player} ${diff>0?'+':'−'}${Math.abs(diff)}${a.unit}</b>.`;
     el.innerHTML = `<span class="k">${state.player}</span> ${state.overlay?'':'(left) '}vs <span class="k">${state.playerB}</span>${state.overlay?'':' (right)'}. ` +
       `${state.player}: <b>${a.val}${a.unit}</b> ${a.label}; ${state.playerB}: <b>${b.val}${b.unit}</b>. ${delta}`;
+    canvas.setAttribute('aria-label', el.textContent);
     return;
   }
   VIEWS[v].insight(el);
+  canvas.setAttribute('aria-label', el.textContent); // screen-reader alt text = the plain-English read
 }
 // ==================================================================
 // VIEW REGISTRY — one entry per view consolidates the per-view code that
