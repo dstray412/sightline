@@ -80,6 +80,34 @@
 
   footer { margin-top: 22px; color: var(--muted); font-size: 12px; text-align: center; }
   .badge { display:inline-block; padding: 3px 9px; border:1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; letter-spacing:.04em; }
+
+  @media (max-width: 640px) {
+    .wrap { padding: 14px 11px 40px; }
+    header { gap: 8px 10px; flex-wrap: wrap; margin-bottom: 4px; }
+    .logo { font-size: 17px; letter-spacing: .1em; }
+    .tag { display: none; }
+    .sports { margin-left: auto; padding: 3px; gap: 4px; }
+    .sport { padding: 7px 12px; font-size: 12px; letter-spacing: .04em; }
+    .stage { margin-top: 16px; padding: 14px 12px; border-radius: 16px; }
+    .toprow { gap: 8px; }
+    .subtitle { font-size: 11px; letter-spacing: .12em; }
+    .viztitle { font-size: 18px; }
+    .chips { margin-left: 0; width: 100%; margin-top: 2px; }
+    .chip { padding: 7px 12px; font-size: 12.5px; }
+    .chip.sm { padding: 5px 10px; font-size: 11.5px; }
+    .views { gap: 5px; }
+    .viewbtn { padding: 7px 11px; font-size: 12px; }
+    .cmp-toggle { padding: 6px 11px; font-size: 12px; }
+    .insight { margin-top: 12px; padding: 11px 13px; font-size: 13.5px; }
+    .legend { margin-top: 12px; gap: 9px 12px; font-size: 11.5px; }
+    .grad { width: 92px; }
+    footer { margin-top: 16px; font-size: 11px; }
+  }
+  /* Fine-pointer only: hover cues that don't make sense on touch. */
+  @media (hover: none) {
+    .chip:not(.active):hover, .viewbtn:not(.active):hover,
+    .sport:not(.active):hover, .cmp-toggle:not(.active):hover { color: var(--muted); }
+  }
 </style>
 </head>
 <body>
@@ -845,20 +873,22 @@ function drawScatter(prog) {
 // ---- Shot Diet (horizontal bars: how often + how good, per area) ----
 function drawDiet(prog) {
   const items = state.items, n = items.length;
-  const padL=140, padR=72, padT=26, gap=18;
+  const narrow = W < 560;
+  const padL = Math.min(140, W*0.3), padR = Math.min(72, W*0.14), padT = narrow?18:26, gap = narrow?12:18;
+  const lblF = narrow?12.5:15;
   const rowH = (H - padT*2 - gap*(n-1)) / n;
   const trackW = W - padL - padR;
   const maxFreq = Math.max(...items.map(i=>i.freq));
   ctx.save(); ctx.textBaseline='middle';
   items.forEach((it,i)=>{
     const y = padT + i*(rowH+gap);
-    ctx.fillStyle='#cfd6e6'; ctx.font='600 15px ui-sans-serif, system-ui'; ctx.textAlign='right';
-    ctx.fillText(it.label, padL-14, y+rowH/2);
+    ctx.fillStyle='#cfd6e6'; ctx.font=`600 ${lblF}px ui-sans-serif, system-ui`; ctx.textAlign='right';
+    ctx.fillText(it.label, padL-10, y+rowH/2);
     ctx.fillStyle='rgba(255,255,255,0.05)'; rr(padL, y, trackW, rowH, 9); ctx.fill();
     const w = Math.max(3, (it.freq/maxFreq)*trackW*prog);
     ctx.shadowColor=it.color; ctx.shadowBlur=8 + heatGlow((it.value-0.7)/0.75); ctx.fillStyle=it.color; rr(padL, y, w, rowH, 9); ctx.fill(); ctx.shadowBlur=0;
-    ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 15px ui-sans-serif, system-ui';
-    ctx.fillText(Math.round(it.freq*100)+'%', padL + w + 12, y+rowH/2);
+    ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font=`700 ${lblF}px ui-sans-serif, system-ui`;
+    ctx.fillText(Math.round(it.freq*100)+'%', padL + Math.min(w, trackW-34) + 10, y+rowH/2);
     it._rect = [padL, y, trackW, rowH];
   });
   ctx.restore();
@@ -899,7 +929,10 @@ function drawNasty(prog) {
 
 function resize() {
   const holderW = canvas.parentElement.clientWidth;
-  const asp = { gravity:0.82, diet:0.5, arsenal:0.72, nasty:0.62, spray:0.92, range:0.6, evolution:0.6, damage:0.5, passmap:0.92, airyards:0.5 }[state.view];
+  // Portrait phones get taller aspect ratios so charts don't get squished into a thin strip.
+  const aspD = { gravity:0.82, diet:0.5, arsenal:0.72, nasty:0.62, spray:0.92, range:0.6, evolution:0.6, damage:0.5, passmap:0.92, airyards:0.5 };
+  const aspM = { gravity:1.02, diet:0.95, arsenal:0.98, nasty:0.92, spray:1.14, range:0.92, evolution:0.86, damage:0.9, passmap:1.2, airyards:0.86 };
+  const asp = (holderW < 560 ? aspM : aspD)[state.view];
   W = holderW; H = Math.round(holderW*asp);
   canvas.width = W*DPR; canvas.height = H*DPR; canvas.style.height = H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -1115,10 +1148,10 @@ function setTitles() {
 }
 
 // ---------- hover tooltip ----------
-canvas.addEventListener('mousemove', (e)=>{
+function inspectAt(clientX, clientY){
   if (state.compare && state.playerB && state.playerB!==state.player) { tip.style.opacity=0; return; }
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX-rect.left, my = e.clientY-rect.top, v = state.view;
+  const mx = clientX-rect.left, my = clientY-rect.top, v = state.view;
   let html=null, tx=0, ty=0;
   if (isScatter()) {
     let best=null, bd=1e9;
@@ -1144,8 +1177,11 @@ canvas.addEventListener('mousemove', (e)=>{
   }
   if (html){ tip.style.opacity=1; tip.style.left=tx+'px'; tip.style.top=ty+'px'; tip.innerHTML=html; }
   else tip.style.opacity=0;
-});
+}
+canvas.addEventListener('mousemove', e=>inspectAt(e.clientX, e.clientY));
 canvas.addEventListener('mouseleave', ()=> tip.style.opacity=0);
+// Tap-to-inspect on touch devices (passive so the page still scrolls).
+canvas.addEventListener('touchstart', e=>{ const t=e.touches[0]; if(t) inspectAt(t.clientX, t.clientY); }, {passive:true});
 
 // ---------- sport toggle ----------
 document.getElementById('sports').addEventListener('click', (e)=>{
