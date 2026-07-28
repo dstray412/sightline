@@ -773,18 +773,34 @@ function drawCurrent(prog) {
   VIEWS[state.view].draw(prog);
 }
 // Split the canvas and draw the SAME view for two players, side by side.
+// Split the canvas and draw the SAME view for two players. Both players' items
+// are cached per (view/players/season/matchup/width) so we don't recompute them
+// on every animation frame; the try/finally guarantees the temporarily-swapped
+// globals (W, state.player, state.items) are always restored, even on a throw.
+let _cmpSig=null, _cmpItems=[null,null];
 function renderCompareBody(prog) {
-  const fullW=W, halfW=Math.floor(W/2), real=state.player;
-  for (const [pl, ox] of [[state.player, 0], [state.playerB, halfW]]) {
-    W = halfW; state.player = pl; computeItems();
-    ctx.save(); ctx.translate(ox, 0); ctx.beginPath(); ctx.rect(0,0,halfW,H); ctx.clip();
-    drawCurrent(prog); ctx.restore();
-    ctx.save(); ctx.fillStyle='#eef1f7'; ctx.font='700 13px ui-sans-serif, system-ui'; ctx.textAlign='center';
-    ctx.fillText(pl, ox+halfW/2, 15); ctx.restore();
+  const fullW=W, halfW=Math.floor(W/2), realPlayer=state.player, realItems=state.items;
+  const players=[state.player, state.playerB];
+  const sig=[state.view, players[0], players[1], state.season, state.vsPitcher, halfW].join('|');
+  try {
+    W = halfW;
+    if (sig !== _cmpSig) { // recompute both only when an input changed, not every frame
+      _cmpItems = players.map(pl=>{ state.player=pl; computeItems(); return state.items; });
+      _cmpSig = sig;
+    }
+    players.forEach((pl,i)=>{
+      const ox = i*halfW;
+      state.player = pl; state.items = _cmpItems[i];
+      ctx.save(); ctx.translate(ox, 0); ctx.beginPath(); ctx.rect(0,0,halfW,H); ctx.clip();
+      drawCurrent(prog); ctx.restore();
+      ctx.save(); ctx.fillStyle='#eef1f7'; ctx.font='700 13px ui-sans-serif, system-ui'; ctx.textAlign='center';
+      ctx.fillText(pl, ox+halfW/2, 15); ctx.restore();
+    });
+    ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(halfW+0.5, 0); ctx.lineTo(halfW+0.5, H); ctx.stroke();
+  } finally {
+    W = fullW; state.player = realPlayer; state.items = realItems;
   }
-  W = fullW; state.player = real; computeItems();
-  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(halfW+0.5, 0); ctx.lineTo(halfW+0.5, H); ctx.stroke();
 }
 // One comparable series (label + value) per category, for the current bar view.
 function overlaySeries(player) {
