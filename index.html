@@ -76,7 +76,7 @@
   .legend .item { display: flex; align-items: center; gap: 7px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
   .grad { width: 120px; height: 10px; border-radius: 6px;
-    background: linear-gradient(90deg,#26324a,#5e2438,#b0324a,#ff4d6d,#ff8fa6); }
+    background: linear-gradient(90deg,#cee7ff,#5696d2,#b0bac4,#cc3a46,#7a101c); }
 
   footer { margin-top: 22px; color: var(--muted); font-size: 12px; text-align: center; }
   .badge { display:inline-block; padding: 3px 9px; border:1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; letter-spacing:.04em; }
@@ -175,15 +175,15 @@ function buildNBA(name) {
   }
   return { pts, player:p };
 }
-// Crimson heat: deep slate -> wine -> hot red. t in [0,1]. No orange, no purple.
+// Cold->hot scale: light blue (coldest/lowest) -> neutral -> dark red (hottest/highest). No purple/orange.
 function heatColor(t){
   t = Math.max(0, Math.min(1, t));
-  const stops = [[38,50,74],[94,36,56],[176,50,74],[255,77,109],[255,143,166]];
+  const stops = [[206,231,255],[86,150,210],[176,186,196],[204,58,70],[122,16,28]];
   const seg = t*(stops.length-1), i = Math.floor(seg), f = seg-i, a = stops[i], b = stops[Math.min(i+1,4)];
   return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
 }
 // Floored into the visible (magenta->gold) part of plasma so individual dots never vanish on dark.
-function ppsColor(pps){ return heatColor(0.34 + 0.66 * Math.max(0, Math.min(1, (pps - 0.7) / 0.75))); }
+function ppsColor(pps){ return heatColor((pps - 0.7) / 0.75); }
 function nbaToPx(x, y) {
   // court x:-25..25 -> padding..W-padding ; y:0..40 -> bottom..top
   const pad = 24, cw = W - pad*2, ch = H - pad*2;
@@ -218,9 +218,9 @@ function drawCourt() {
 // ==================================================================
 // hBreak (-x glove side / +x arm side, in), vBreak induced (in). velo, usage, whiff.
 const MLB_TYPES = {
-  '4-Seam':   '#ff5470', 'Sinker': '#ffb02e', 'Cutter': '#ff7ae0',
-  'Slider':   '#38e1ff', 'Curveball': '#7c5cff', 'Changeup': '#42d98a',
-  'Sweeper':  '#22d3ff', 'Splitter': '#9ae66e', 'Slurve': '#6ad0ff',
+  '4-Seam':   '#d8434f', 'Sinker': '#e8b83b', 'Cutter': '#4dc4b0',
+  'Slider':   '#38e1ff', 'Curveball': '#5b8fd6', 'Changeup': '#5fce8f',
+  'Sweeper':  '#9fd0ff', 'Splitter': '#b6e26e', 'Slurve': '#e08fb4',
 };
 const MLB_PLAYERS = {
   'The Flamethrower (RHP)': { seed: 7, pitches: [
@@ -350,7 +350,7 @@ function nbaBestArea(diet) {
 }
 
 // ---- Spray Chart (hitter vs pitcher matchup) ----
-const SPRAY = { out:'#3f4c66', single:'#7089ad', double:'#d3687e', hr:'#ff4d6d' };
+const SPRAY = { out:'#b3d4f0', single:'#5d97cf', double:'#cc3a46', hr:'#7a101c' };
 const MLB_HITTERS = {
   'The Pull Slugger':     { seed:41, mean:-24, spread:12, power:300, pspread:70 }, // yanks it to left, big power
   'The Spray Hitter':     { seed:42, mean:2,   spread:22, power:250, pspread:60 }, // uses all fields
@@ -490,7 +490,7 @@ function qbData(name){
 }
 
 // ---- NFL "Passing Map": passes by lane (L/M/R) and depth, colored by outcome ----
-const NFL_OUT = { C:'#7089ad', I:'#3f4c66', TD:'#ff4d6d', INT:'#ffcf4d' };
+const NFL_OUT = { C:'#cc3a46', I:'#b3d4f0', TD:'#7a101c', INT:'#f2c94c' };
 function passMapToPx(lane, depth){
   const padX=52, padT=28, padB=42;
   const x = W/2 + lane * ((W/2 - padX) * 0.64);
@@ -783,7 +783,7 @@ function overlaySeries(player) {
   if (v==='damage') return buildDamage(player, state.vsPitcher).map(f=>({ label:f.field, val:f.total }));
   return [];
 }
-const A_COL='#38e1ff', B_COL='#a78bfa';
+const A_COL='#5b9bd8', B_COL='#d8434f';
 function drawOverlay(prog) {
   const A = overlaySeries(state.player), Bs = overlaySeries(state.playerB), n = A.length;
   if (!n) return;
@@ -937,13 +937,13 @@ function setInsight() {
   }
   if (v==='gravity') {
     el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
-      `<b>Bright red</b> spots are where he scores the most, so defenders have to guard him tight there. ` +
-      `<b>Dark</b> spots are where he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
+      `<b style="color:#c33a46">Deep red</b> spots are where he's hottest — scores the most, so defenders have to guard him tight there. ` +
+      `<b style="color:#8fbce8">Light blue</b> spots are cold — he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
   } else if (v==='diet') {
     const top = [...buildDiet(state.player)].sort((a,b)=>b.freq-a.freq)[0];
     el.innerHTML = `This shows what kinds of shots <span class="k">${state.player}</span> likes to take. ` +
       `The <b>longer the bar</b>, the more often he shoots from there. The <b>color</b> shows how good he is at it — ` +
-      `bright red means great, dark means he misses a lot. Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
+      `<b style="color:#c33a46">deep red</b> means hot (great), <b style="color:#8fbce8">light blue</b> means cold (he misses a lot). Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
   } else if (v==='arsenal') {
     const pp = pitcherPitches(state.player);
     const best = [...pp].sort((a,b)=>b.whiff-a.whiff)[0];
@@ -965,13 +965,13 @@ function setInsight() {
       ? ({all:'all pitchers', L:'left-handed pitchers', R:'right-handed pitchers'}[state.vsPitcher] || 'all pitchers')
       : state.vsPitcher;
     el.innerHTML = `Every dot is a ball <span class="k">${state.player}</span> hit against <span class="k">${matchLabel}</span>. ` +
-      `<b style="color:#7089ad">steel</b> = single, <b style="color:#d3687e">rose</b> = double, <b style="color:#ff4d6d">red</b> = home run, slate = out. ` +
+      `<b style="color:#6aa3d8">blue</b> = single, <b style="color:#d8434f">red</b> = double, <b style="color:#c33a46">deep red</b> = home run, <b style="color:#8fbce8">light blue</b> = out. ` +
       `He does the most damage to <b>${field}</b>${hr?`, including <b>${hr}</b> home run${hr>1?'s':''}`:''}.`;
   } else if (v==='range') {
     const bins = state.items;
     const peak = [...bins].sort((a,b)=>b.freq-a.freq)[0];
     const from3 = bins.filter(b=>b.d0>=23).reduce((s,b)=>s+b.freq,0);
-    el.innerHTML = `Each glowing ring is a distance from the hoop. <b>Brighter rings</b> = <span class="k">${state.player}</span> shoots more from there; <b>hotter color</b> (toward bright red) = more efficient. ` +
+    el.innerHTML = `Each glowing ring is a distance from the hoop. <b>Brighter rings</b> = <span class="k">${state.player}</span> shoots more from there; <b>hotter color</b> (toward deep red) = more efficient; cooler (toward light blue) = less. ` +
       `Most of his shots come from around <b>${peak.d0}–${peak.d0+RANGE_BIN} feet</b>, and <b>${Math.round(from3*100)}%</b> come from three-point range or deeper.`;
   } else if (v==='evolution') {
     const yrs = state.items;
@@ -993,7 +993,7 @@ function setInsight() {
   } else if (v==='passmap') {
     const passes = state.items;
     const tds = passes.filter(p=>p.out==='TD').length, deep = passes.filter(p=>p.depth>=20).length;
-    el.innerHTML = `Every dot is a pass <span class="k">${state.player}</span> threw. <b style="color:#7089ad">steel</b> = complete, slate = incomplete, <b style="color:#ff4d6d">red</b> = touchdown, <b style="color:#ffcf4d">gold</b> = interception. ` +
+    el.innerHTML = `Every dot is a pass <span class="k">${state.player}</span> threw. <b style="color:#d8434f">red</b> = complete, <b style="color:#8fbce8">light blue</b> = incomplete, <b style="color:#c33a46">deep red</b> = touchdown, <b style="color:#f2c94c">gold</b> = interception. ` +
       `Left / middle / right shows the target lane; higher up = deeper downfield. <b>${deep}</b> of these throws travelled 20+ yards in the air.`;
   } else {
     const d = qbData(state.player);
