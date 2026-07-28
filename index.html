@@ -492,7 +492,7 @@ function qbData(name){
 }
 
 // ---- NFL "Passing Map": passes by lane (L/M/R) and depth, colored by outcome ----
-const NFL_OUT = { C:'#a6e635', I:'#7aa7d4', TD:'#f2c94c', INT:'#e0483f' };
+const NFL_OUT = { C:'#eef2f9', I:'#6f9bd0', TD:'#f2c94c', INT:'#e0483f' };
 function passMapToPx(lane, depth){
   const padX=52, padT=28, padB=42;
   const x = W/2 + lane * ((W/2 - padX) * 0.64);
@@ -995,7 +995,7 @@ function setInsight() {
   } else if (v==='passmap') {
     const passes = state.items;
     const tds = passes.filter(p=>p.out==='TD').length, deep = passes.filter(p=>p.depth>=20).length;
-    el.innerHTML = `Every dot is a pass <span class="k">${state.player}</span> threw. <b style="color:#a6e635">lime</b> = complete, <b style="color:#7aa7d4">blue</b> = incomplete, <b style="color:#f2c94c">gold</b> = touchdown, <b style="color:#e0483f">red</b> = interception. ` +
+    el.innerHTML = `Every dot is a pass <span class="k">${state.player}</span> threw. <b style="color:#eef2f9">white</b> = complete, <b style="color:#6f9bd0">blue</b> = incomplete, <b style="color:#f2c94c">gold</b> = touchdown, <b style="color:#e0483f">red</b> = interception. ` +
       `Left / middle / right shows the target lane; higher up = deeper downfield. <b>${deep}</b> of these throws travelled 20+ yards in the air.`;
   } else {
     const d = qbData(state.player);
