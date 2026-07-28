@@ -294,7 +294,8 @@ const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)' };
 const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter' };
 const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger' };
 
-let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', compare:false, playerB:null, items:[], t0:0, raf:0 };
+let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', compare:false, playerB:null, overlay:false, items:[], t0:0, raf:0 };
+const OVERLAY_VIEWS = new Set(['diet','range','damage']); // bar views that overlay cleanly
 const sport = () => VIEW_META[state.view].sport;
 const isScatter = () => state.view==='gravity' || state.view==='arsenal';
 
@@ -639,10 +640,49 @@ function renderCompareBody(prog) {
   ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(halfW+0.5, 0); ctx.lineTo(halfW+0.5, H); ctx.stroke();
 }
+// One comparable series (label + value) per category, for the current bar view.
+function overlaySeries(player) {
+  const v = state.view;
+  if (v==='diet')   return buildDiet(player).map(d=>({ label:d.label, val:+(d.freq*100).toFixed(1) }));
+  if (v==='range')  return buildRange(player).map(b=>({ label:String(b.d0), val:+(b.freq*100).toFixed(1) }));
+  if (v==='damage') return buildDamage(player, state.vsPitcher).map(f=>({ label:f.field, val:f.total }));
+  return [];
+}
+const A_COL='#38e1ff', B_COL='#a78bfa';
+function drawOverlay(prog) {
+  const A = overlaySeries(state.player), Bs = overlaySeries(state.playerB), n = A.length;
+  if (!n) return;
+  const padL=44, padR=22, padT=44, padB=46, plotW=W-padL-padR, plotH=H-padT-padB;
+  const maxV = Math.max(...A.map(d=>d.val), ...Bs.map(d=>d.val), 1);
+  const groupW = plotW/n, barW = Math.min(groupW*0.38, 26);
+  ctx.save();
+  // legend
+  ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.font='700 13px ui-sans-serif, system-ui';
+  ctx.fillStyle=A_COL; rr(padL, padT-30, 12, 12, 3); ctx.fill();
+  ctx.fillStyle='#eef1f7'; ctx.fillText(state.player, padL+18, padT-24);
+  const bx = padL + 30 + ctx.measureText(state.player).width + 20;
+  ctx.fillStyle=B_COL; rr(bx, padT-30, 12, 12, 3); ctx.fill();
+  ctx.fillStyle='#eef1f7'; ctx.fillText(state.playerB, bx+18, padT-24);
+  // grouped bars
+  for (let i=0;i<n;i++){
+    const cx = padL + i*groupW + groupW/2;
+    const av = A[i].val, bv = (Bs[i]||{val:0}).val;
+    const ah = (av/maxV)*plotH*prog, bh = (bv/maxV)*plotH*prog;
+    ctx.fillStyle=A_COL; ctx.shadowColor=A_COL; ctx.shadowBlur=8; rr(cx-barW-1, (H-padB)-ah, barW, ah, 3); ctx.fill();
+    ctx.fillStyle=B_COL; ctx.shadowColor=B_COL; rr(cx+1, (H-padB)-bh, barW, bh, 3); ctx.fill(); ctx.shadowBlur=0;
+  }
+  // x labels
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  if (state.view==='range'){ for (let ft=0; ft<=30; ft+=10){ const cx=padL+(ft/2)*groupW+groupW/2; ctx.fillText(ft+'ft', cx, H-padB+16); } }
+  else { A.forEach((d,i)=>{ ctx.fillText(d.label, padL+i*groupW+groupW/2, H-padB+16); }); }
+  ctx.restore();
+}
 function render(prog) {
   ctx.clearRect(0,0,W,H);
-  if (state.compare && state.playerB && state.playerB!==state.player) renderCompareBody(prog);
-  else drawCurrent(prog);
+  if (state.compare && state.playerB && state.playerB!==state.player) {
+    if (state.overlay && OVERLAY_VIEWS.has(state.view)) drawOverlay(prog);
+    else renderCompareBody(prog);
+  } else drawCurrent(prog);
 }
 
 // ---- Scoring Gravity + Pitch Arsenal (point clouds) ----
@@ -731,10 +771,28 @@ function resize() {
 }
 
 // ---------- insight / legend / chips / views / titles ----------
+// A single comparable number per player for the current view (drives the compare delta).
+function keyStat(player) {
+  const v = state.view;
+  if (v==='gravity' || v==='diet' || v==='range') {
+    const three = buildDiet(player).find(d=>d.label==='3-pointers');
+    return { label:'of shots from three', val:Math.round((three?three.freq:0)*100), unit:'%' };
+  }
+  if (v==='arsenal' || v==='nasty' || v==='evolution') {
+    const pp = pitcherPitches(player);
+    return { label:'top velocity', val: pp.length?Math.max(...pp.map(x=>x.velo)):0, unit:' mph' };
+  }
+  const hr = buildSpray(player, state.vsPitcher).filter(b=>b.type==='Home run').length;
+  return { label:'home runs', val:hr, unit:'' };
+}
 function setInsight() {
   const el = document.getElementById('insight'), v = state.view;
   if (state.compare && state.playerB && state.playerB!==state.player) {
-    el.innerHTML = `Comparing <span class="k">${state.player}</span> (left) and <span class="k">${state.playerB}</span> (right) — the same chart, side by side. Look at how their shapes differ; that's the story.`;
+    const a = keyStat(state.player), b = keyStat(state.playerB), diff = a.val - b.val;
+    const delta = diff===0 ? `Dead even on ${a.label.replace(/^of /,'')}.`
+      : `<b>${state.player} ${diff>0?'+':'−'}${Math.abs(diff)}${a.unit}</b>.`;
+    el.innerHTML = `<span class="k">${state.player}</span> ${state.overlay?'':'(left) '}vs <span class="k">${state.playerB}</span>${state.overlay?'':' (right)'}. ` +
+      `${state.player}: <b>${a.val}${a.unit}</b> ${a.label}; ${state.playerB}: <b>${b.val}${b.unit}</b>. ${delta}`;
     return;
   }
   if (v==='gravity') {
@@ -870,8 +928,11 @@ function setComparebar() {
   let html = `<button class="cmp-toggle ${state.compare?'active':''}" id="cmpToggle">⇄ Compare${state.compare?' ON':''}</button>`;
   if (state.compare) html += `<span class="vslabel">vs</span>` +
     players.filter(n=>n!==state.player).map(n=>`<button class="chip sm ${n===state.playerB?'active':''}" data-pb="${n}">${n}</button>`).join('');
+  if (state.compare && OVERLAY_VIEWS.has(state.view))
+    html += `<button class="cmp-toggle ${state.overlay?'active':''}" id="ovToggle" style="margin-left:8px">▤ Overlay${state.overlay?' ON':''}</button>`;
   el.innerHTML = html;
   document.getElementById('cmpToggle').onclick = ()=>{ state.compare=!state.compare; setComparebar(); resize(); rebuild(); setInsight(); };
+  const ov = document.getElementById('ovToggle'); if (ov) ov.onclick = ()=>{ state.overlay=!state.overlay; setComparebar(); resize(); rebuild(); setInsight(); };
   el.querySelectorAll('[data-pb]').forEach(b=>b.onclick=()=>{ state.playerB=b.dataset.pb; setComparebar(); rebuild(); setInsight(); });
 }
 function setViews() {
