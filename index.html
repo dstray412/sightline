@@ -52,8 +52,14 @@
   .viewbtn:not(.active):hover { color: var(--text); }
 
   .matchup, .seasons { display: none; align-items: center; gap: 6px; margin: 2px 0 6px; flex-wrap: wrap; }
+  .comparebar { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; flex-wrap: wrap; }
   .vslabel { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-right: 4px; }
   .chip.sm { padding: 5px 11px; font-size: 12px; }
+  .cmp-toggle { padding: 6px 13px; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: 12.5px;
+    background: transparent; border: 1px solid var(--line); color: var(--muted); transition: .15s; }
+  .cmp-toggle.active { background: linear-gradient(90deg, rgba(56,225,255,.2), rgba(124,92,255,.2));
+    color: var(--text); border-color: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+  .cmp-toggle:not(.active):hover { color: var(--text); }
 
   .canvas-holder { position: relative; width: 100%; }
   canvas { width: 100%; display: block; border-radius: 14px; }
@@ -97,6 +103,7 @@
     </div>
 
     <div class="views" id="views"></div>
+    <div class="comparebar" id="comparebar"></div>
     <div class="seasons" id="seasons"></div>
     <div class="matchup" id="matchup"></div>
 
@@ -287,7 +294,7 @@ const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)' };
 const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter' };
 const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger' };
 
-let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', items:[], t0:0, raf:0 };
+let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', compare:false, playerB:null, items:[], t0:0, raf:0 };
 const sport = () => VIEW_META[state.view].sport;
 const isScatter = () => state.view==='gravity' || state.view==='arsenal';
 
@@ -585,7 +592,7 @@ function layoutScatter() {
   }
 }
 
-function rebuild() {
+function computeItems() {
   const v = state.view;
   state.items = v==='gravity'   ? buildNBA(state.player).pts
               : v==='arsenal'   ? buildMLB(state.player)
@@ -596,6 +603,9 @@ function rebuild() {
               : v==='evolution' ? buildEvolution(state.player)
               :                   buildDamage(state.player, state.vsPitcher);
   if (isScatter()) layoutScatter();
+}
+function rebuild() {
+  computeItems();
   state.t0 = performance.now();
   cancelAnimationFrame(state.raf);
   animate();
@@ -605,8 +615,7 @@ function animate() {
   render(el);
   if (el < 1) state.raf = requestAnimationFrame(animate);
 }
-function render(prog) {
-  ctx.clearRect(0,0,W,H);
+function drawCurrent(prog) {
   const v = state.view;
   if (isScatter()) drawScatter(prog);
   else if (v==='diet') drawDiet(prog);
@@ -615,6 +624,25 @@ function render(prog) {
   else if (v==='range') drawRange(prog);
   else if (v==='evolution') drawEvolution(prog);
   else drawDamage(prog);
+}
+// Split the canvas and draw the SAME view for two players, side by side.
+function renderCompareBody(prog) {
+  const fullW=W, halfW=Math.floor(W/2), real=state.player;
+  for (const [pl, ox] of [[state.player, 0], [state.playerB, halfW]]) {
+    W = halfW; state.player = pl; computeItems();
+    ctx.save(); ctx.translate(ox, 0); ctx.beginPath(); ctx.rect(0,0,halfW,H); ctx.clip();
+    drawCurrent(prog); ctx.restore();
+    ctx.save(); ctx.fillStyle='#eef1f7'; ctx.font='700 13px ui-sans-serif, system-ui'; ctx.textAlign='center';
+    ctx.fillText(pl, ox+halfW/2, 15); ctx.restore();
+  }
+  W = fullW; state.player = real; computeItems();
+  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(halfW+0.5, 0); ctx.lineTo(halfW+0.5, H); ctx.stroke();
+}
+function render(prog) {
+  ctx.clearRect(0,0,W,H);
+  if (state.compare && state.playerB && state.playerB!==state.player) renderCompareBody(prog);
+  else drawCurrent(prog);
 }
 
 // ---- Scoring Gravity + Pitch Arsenal (point clouds) ----
@@ -705,6 +733,10 @@ function resize() {
 // ---------- insight / legend / chips / views / titles ----------
 function setInsight() {
   const el = document.getElementById('insight'), v = state.view;
+  if (state.compare && state.playerB && state.playerB!==state.player) {
+    el.innerHTML = `Comparing <span class="k">${state.player}</span> (left) and <span class="k">${state.playerB}</span> (right) — the same chart, side by side. Look at how their shapes differ; that's the story.`;
+    return;
+  }
   if (v==='gravity') {
     el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
       `<b>Red</b> spots are where he scores the most, so defenders have to guard him tight there. ` +
@@ -800,7 +832,7 @@ function setChips() {
   const el = document.getElementById('chips');
   const names = Object.keys(chipData());
   el.innerHTML = names.map(n=>`<button class="chip ${n===state.player?'active':''}" data-p="${n}">${n}</button>`).join('');
-  el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ state.player=c.dataset.p; setChips(); setSeasons(); rebuild(); setInsight(); });
+  el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ state.player=c.dataset.p; setChips(); setSeasons(); setComparebar(); rebuild(); setInsight(); });
 }
 function setMatchup() {
   const el = document.getElementById('matchup');
@@ -830,6 +862,18 @@ function setSeasons() {
     ys.map(y=>`<button class="chip sm ${y===state.season?'active':''}" data-yr="${y}">${y}</button>`).join('');
   el.querySelectorAll('[data-yr]').forEach(b=>b.onclick=()=>{ state.season=b.dataset.yr; setSeasons(); rebuild(); setInsight(); });
 }
+function setComparebar() {
+  const el = document.getElementById('comparebar');
+  const players = Object.keys(chipData());
+  if (state.compare && (!state.playerB || state.playerB===state.player || !players.includes(state.playerB)))
+    state.playerB = players.find(n=>n!==state.player) || null;
+  let html = `<button class="cmp-toggle ${state.compare?'active':''}" id="cmpToggle">⇄ Compare${state.compare?' ON':''}</button>`;
+  if (state.compare) html += `<span class="vslabel">vs</span>` +
+    players.filter(n=>n!==state.player).map(n=>`<button class="chip sm ${n===state.playerB?'active':''}" data-pb="${n}">${n}</button>`).join('');
+  el.innerHTML = html;
+  document.getElementById('cmpToggle').onclick = ()=>{ state.compare=!state.compare; setComparebar(); resize(); rebuild(); setInsight(); };
+  el.querySelectorAll('[data-pb]').forEach(b=>b.onclick=()=>{ state.playerB=b.dataset.pb; setComparebar(); rebuild(); setInsight(); });
+}
 function setViews() {
   const el = document.getElementById('views');
   el.innerHTML = SPORT_VIEWS[sport()].map(v=>`<button class="viewbtn ${v===state.view?'active':''}" data-v="${v}">${VIEW_META[v].sub}</button>`).join('');
@@ -837,7 +881,7 @@ function setViews() {
     const nv = b.dataset.v;
     if (ENTITY[nv] !== ENTITY[state.view]) state.player = ENTITY_DEFAULT[ENTITY[nv]]; // switching pitcher<->hitter
     state.view = nv;
-    setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setLegend(); resize(); rebuild(); setInsight();
+    setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setComparebar(); setLegend(); resize(); rebuild(); setInsight();
   });
 }
 function setTitles() {
@@ -847,6 +891,7 @@ function setTitles() {
 
 // ---------- hover tooltip ----------
 canvas.addEventListener('mousemove', (e)=>{
+  if (state.compare && state.playerB && state.playerB!==state.player) { tip.style.opacity=0; return; }
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX-rect.left, my = e.clientY-rect.top, v = state.view;
   let html=null, tx=0, ty=0;
@@ -879,13 +924,13 @@ document.getElementById('sports').addEventListener('click', (e)=>{
   document.querySelectorAll('.sport').forEach(s=>s.classList.toggle('active', s===b));
   state.view = SPORT_VIEWS[b.dataset.sport][0];
   state.player = DEFAULT_PLAYER[b.dataset.sport];
-  setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setLegend(); resize(); rebuild(); setInsight();
+  setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setComparebar(); setLegend(); resize(); rebuild(); setInsight();
 });
 
 window.addEventListener('resize', resize);
 
 // init
-setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setLegend(); rebuild(); setInsight();
+setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setComparebar(); setLegend(); rebuild(); setInsight();
 setTimeout(resize, 30);
 </script>
 </body>
