@@ -76,7 +76,7 @@
   .legend .item { display: flex; align-items: center; gap: 7px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
   .grad { width: 120px; height: 10px; border-radius: 6px;
-    background: linear-gradient(90deg,#cee7ff,#5696d2,#b0bac4,#cc3a46,#7a101c); }
+    background: linear-gradient(90deg,#cee7ff,#5ca0dc,#f2e6e8,#d4424a,#84121e); }
 
   footer { margin-top: 22px; color: var(--muted); font-size: 12px; text-align: center; }
   .badge { display:inline-block; padding: 3px 9px; border:1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; letter-spacing:.04em; }
@@ -175,10 +175,10 @@ function buildNBA(name) {
   }
   return { pts, player:p };
 }
-// Cold->hot scale: light blue (coldest/lowest) -> neutral -> dark red (hottest/highest). No purple/orange.
+// Cold->hot scale: light blue (coldest/lowest) -> warm blush-white -> dark red (hottest/highest). No grey/purple/orange.
 function heatColor(t){
   t = Math.max(0, Math.min(1, t));
-  const stops = [[206,231,255],[86,150,210],[176,186,196],[204,58,70],[122,16,28]];
+  const stops = [[206,231,255],[92,160,220],[242,230,232],[212,66,74],[132,18,30]];
   const seg = t*(stops.length-1), i = Math.floor(seg), f = seg-i, a = stops[i], b = stops[Math.min(i+1,4)];
   return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
 }
@@ -324,7 +324,7 @@ function nbaData(name){
 if (window.SIGHTLINE_MLB && window.SIGHTLINE_MLB.pitchers && Object.keys(window.SIGHTLINE_MLB.pitchers).length) {
   const real = window.SIGHTLINE_MLB.pitchers;
   const years = new Set();
-  for (const p of Object.values(real)) for (const pcs of Object.values(p.seasons||{})) { for (const pc of pcs) if(!MLB_TYPES[pc.t]) MLB_TYPES[pc.t]='#9aa6b2'; }
+  for (const p of Object.values(real)) for (const pcs of Object.values(p.seasons||{})) { for (const pc of pcs) if(!MLB_TYPES[pc.t]) MLB_TYPES[pc.t]='#5b8fd6'; }
   for (const p of Object.values(real)) Object.keys(p.seasons||{}).forEach(y=>years.add(y));
   for (const k of Object.keys(MLB_PLAYERS)) delete MLB_PLAYERS[k];
   Object.assign(MLB_PLAYERS, real);
@@ -540,7 +540,7 @@ function drawGridiron(){
 }
 function buildPassMap(name){
   const d = qbData(name); if(!d) return [];
-  return d.passes.map((p,i)=>({ lane:p[0]+(((i*0.6180339887)%1)-0.5)*0.62, depth:p[1], out:p[2], color:NFL_OUT[p[2]]||'#888' }));
+  return d.passes.map((p,i)=>({ lane:p[0]+(((i*0.6180339887)%1)-0.5)*0.62, depth:p[1], out:p[2], color:NFL_OUT[p[2]]||'#5b8fd6' }));
 }
 function drawPassMap(prog){
   const padX=52, padT=28, padB=42, fieldW=W-padX*2, fieldH=H-padT-padB, dBot=-6, dTop=48;
@@ -634,7 +634,7 @@ function buildEvolution(name) {
   if (!p || !p.seasons) return [];
   return Object.keys(p.seasons).sort().map(y=>({
     year: y,
-    pitches: p.seasons[y].map(pi=>({ t:pi.t, use:pi.use, color:MLB_TYPES[pi.t]||'#9aa6b2' })).sort((a,b)=>b.use-a.use),
+    pitches: p.seasons[y].map(pi=>({ t:pi.t, use:pi.use, color:MLB_TYPES[pi.t]||'#5b8fd6' })).sort((a,b)=>b.use-a.use),
   }));
 }
 function drawEvolution(prog) {
@@ -1023,7 +1023,7 @@ function setLegend() {
       <div class="item" style="color:var(--muted)">brightness = how often he shoots from there</div>`;
   } else if (v==='evolution') {
     const types = [...new Set(buildEvolution(state.player).flatMap(y=>y.pitches.map(p=>p.t)))];
-    el.innerHTML = types.map(t=>`<div class="item"><span class="dot" style="color:${MLB_TYPES[t]||'#9aa6b2'};background:${MLB_TYPES[t]||'#9aa6b2'}"></span>${t}</div>`).join('') +
+    el.innerHTML = types.map(t=>`<div class="item"><span class="dot" style="color:${MLB_TYPES[t]||'#5b8fd6'};background:${MLB_TYPES[t]||'#5b8fd6'}"></span>${t}</div>`).join('') +
       `<div class="item" style="color:var(--muted)">each bar = one season</div>`;
   } else if (v==='passmap') {
     el.innerHTML =
