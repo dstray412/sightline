@@ -824,6 +824,7 @@ function drawOverlay(prog) {
   ctx.restore();
 }
 function render(prog) {
+  if (W<=0 || H<=0) return; // canvas not sized yet (init runs before first resize) — drawing now throws
   ctx.clearRect(0,0,W,H);
   if (state.compare && state.playerB && state.playerB!==state.player) {
     if (state.overlay && OVERLAY_VIEWS.has(state.view)) drawOverlay(prog);
@@ -915,7 +916,7 @@ function resize() {
   W = holderW; H = Math.round(holderW*asp);
   canvas.width = W*DPR; canvas.height = H*DPR; canvas.style.height = H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  if (isScatter()) layoutScatter();
+  computeItems(); // recompute for the CURRENT view at the new width — never render another view's stale items
   render(1);
 }
 
