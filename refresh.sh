@@ -10,10 +10,11 @@ cd "$HOME/Desktop/sports-viz" || exit 1
 echo "===== refresh started $(date) =====" >> refresh.log
 node fetch-mlb.mjs --refresh >> refresh.log 2>&1
 node fetch-nba.mjs --refresh >> refresh.log 2>&1
+node fetch-nfl.mjs --refresh >> refresh.log 2>&1
 
 # Commit only if the data actually changed.
-if ! git diff --quiet -- mlb-data.js nba-data.js 2>/dev/null; then
-  git add mlb-data.js nba-data.js
+if ! git diff --quiet -- mlb-data.js nba-data.js nfl-data.js 2>/dev/null; then
+  git add mlb-data.js nba-data.js nfl-data.js
   git commit -m "data: daily refresh $(date +%F)" >> refresh.log 2>&1
   echo "committed refreshed data" >> refresh.log
 else
