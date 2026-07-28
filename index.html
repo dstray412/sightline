@@ -182,8 +182,10 @@ function heatColor(t){
   const seg = t*(stops.length-1), i = Math.floor(seg), f = seg-i, a = stops[i], b = stops[Math.min(i+1,4)];
   return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
 }
-// Floored into the visible (magenta->gold) part of plasma so individual dots never vanish on dark.
 function ppsColor(pps){ return heatColor((pps - 0.7) / 0.75); }
+// Subtle glow that only kicks in on the hot half, so the dark-red peaks pop without
+// brightening the cold end. t in [0,1] -> extra shadowBlur px.
+function heatGlow(t){ t = Math.max(0, Math.min(1, t)); return t<=0.5 ? 0 : Math.pow((t-0.5)*2, 1.3) * 16; }
 function nbaToPx(x, y) {
   // court x:-25..25 -> padding..W-padding ; y:0..40 -> bottom..top
   const pad = 24, cw = W - pad*2, ch = H - pad*2;
@@ -574,7 +576,7 @@ function drawAirYards(prog){
   ctx.save(); ctx.textBaseline='middle';
   items.forEach((it,i)=>{
     const [lo,hi]=ranges[i]||[0,5], y1=depthY(hi), y0=depthY(lo), col=compColor(it.compPct), freqN=it.freq/maxFreq;
-    ctx.globalAlpha=(0.1+0.55*freqN)*prog; ctx.fillStyle=col; ctx.fillRect(padX+2, y1, fieldW-4, y0-y1); // translucent over turf
+    ctx.globalAlpha=(0.1+0.55*freqN)*prog; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=heatGlow((it.compPct-35)/60); ctx.fillRect(padX+2, y1, fieldW-4, y0-y1); ctx.shadowBlur=0; // translucent over turf
     ctx.globalAlpha=1; ctx.shadowColor='rgba(0,0,0,0.85)'; ctx.shadowBlur=5;
     ctx.fillStyle='#fff'; ctx.font='700 12.5px ui-sans-serif, system-ui'; ctx.textAlign='left'; ctx.fillText(it.label, padX+14, (y0+y1)/2);
     ctx.textAlign='right'; ctx.fillText(it.compPct+'% complete', padX+fieldW-14, (y0+y1)/2);
@@ -616,7 +618,7 @@ function drawRange(prog) {
   bins.forEach((b)=>{
     const freqN=b.freq/maxFreq; if(freqN<0.015) return;
     const r0=b.d0*ftToR, r1=(b.d0+RANGE_BIN)*ftToR, col=ppsColor(b.pps);
-    ctx.globalAlpha=(0.2+0.8*freqN)*prog; ctx.shadowColor=col; ctx.shadowBlur=18*freqN; ctx.fillStyle=col;
+    ctx.globalAlpha=(0.2+0.8*freqN)*prog; ctx.shadowColor=col; ctx.shadowBlur=18*freqN + heatGlow((b.pps-0.7)/0.75); ctx.fillStyle=col;
     ctx.beginPath(); ctx.arc(hoopX,hoopY, r1, a0, a1); ctx.arc(hoopX,hoopY, r0, a1, a0, true); ctx.closePath(); ctx.fill();
   });
   ctx.globalAlpha=1; ctx.shadowBlur=0;
@@ -678,7 +680,7 @@ function drawDamage(prog) {
     const [wa0,wa1] = wedges[f.field] || [-15,15];
     const tb = (f.Single + 2*f.Double + 4*f['Home run']) / (f.total||1); // total bases per ball = damage
     const col = heatColor((tb-0.15)/0.85), vol = f.total/maxTotal;
-    ctx.globalAlpha=(0.18+0.55*vol)*prog; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=26;
+    ctx.globalAlpha=(0.18+0.55*vol)*prog; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=8 + heatGlow((tb-0.15)/0.85);
     ctx.beginPath(); ctx.moveTo(cx,hy);
     for(let a=wa0; a<=wa1; a+=2){ const [x,y]=sprayMap(a, fenceAt(a)); ctx.lineTo(x,y); }
     ctx.closePath(); ctx.fill();
@@ -832,7 +834,7 @@ function drawScatter(prog) {
     if (appear<=0) continue;
     const e = 1-Math.pow(1-appear,3);
     let color, radius, alpha, blur;
-    if (nba){ color = ppsColor(p.pps); radius = 4.4; alpha = 0.82; blur = 14; }
+    if (nba){ color = ppsColor(p.pps); radius = 4.4; alpha = 0.82; blur = 5 + heatGlow((p.pps-0.7)/0.75); }
     else { color = MLB_TYPES[p.t]; radius = 2.8; alpha = 0.7; blur = 3; }
     ctx.globalAlpha = alpha*e; ctx.shadowColor = color; ctx.shadowBlur = blur*e; ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(p.px, p.py, radius*e, 0, Math.PI*2); ctx.fill();
@@ -854,7 +856,7 @@ function drawDiet(prog) {
     ctx.fillText(it.label, padL-14, y+rowH/2);
     ctx.fillStyle='rgba(255,255,255,0.05)'; rr(padL, y, trackW, rowH, 9); ctx.fill();
     const w = Math.max(3, (it.freq/maxFreq)*trackW*prog);
-    ctx.shadowColor=it.color; ctx.shadowBlur=16; ctx.fillStyle=it.color; rr(padL, y, w, rowH, 9); ctx.fill(); ctx.shadowBlur=0;
+    ctx.shadowColor=it.color; ctx.shadowBlur=8 + heatGlow((it.value-0.7)/0.75); ctx.fillStyle=it.color; rr(padL, y, w, rowH, 9); ctx.fill(); ctx.shadowBlur=0;
     ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 15px ui-sans-serif, system-ui';
     ctx.fillText(Math.round(it.freq*100)+'%', padL + w + 12, y+rowH/2);
     it._rect = [padL, y, trackW, rowH];
