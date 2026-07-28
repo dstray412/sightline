@@ -76,7 +76,7 @@
   .legend .item { display: flex; align-items: center; gap: 7px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
   .grad { width: 120px; height: 10px; border-radius: 6px;
-    background: linear-gradient(90deg,#2f6bff,#25c2a0,#ffd24a,#ff7a3c,#ff3b5c); }
+    background: linear-gradient(90deg,#1a125a,#7e03a8,#cc4778,#f89540,#f5db50); }
 
   footer { margin-top: 22px; color: var(--muted); font-size: 12px; text-align: center; }
   .badge { display:inline-block; padding: 3px 9px; border:1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; letter-spacing:.04em; }
@@ -175,14 +175,15 @@ function buildNBA(name) {
   }
   return { pts, player:p };
 }
-function ppsColor(pps) {
-  // 0.6 -> blue, 1.06 -> teal/green, 1.3+ -> orange/red
-  const t = Math.max(0, Math.min(1, (pps - 0.6) / (1.45 - 0.6)));
-  const stops = [[47,107,255],[37,194,160],[255,210,74],[255,122,60],[255,59,92]];
-  const seg = t*(stops.length-1); const i = Math.floor(seg); const f = seg-i;
-  const a = stops[i], b = stops[Math.min(i+1,stops.length-1)];
+// Vivid-but-refined sequential palette (plasma): deep violet -> magenta -> orange -> gold. t in [0,1].
+function heatColor(t){
+  t = Math.max(0, Math.min(1, t));
+  const stops = [[26,18,90],[126,3,168],[204,71,120],[248,149,64],[245,219,80]];
+  const seg = t*(stops.length-1), i = Math.floor(seg), f = seg-i, a = stops[i], b = stops[Math.min(i+1,4)];
   return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
 }
+// Floored into the visible (magenta->gold) part of plasma so individual dots never vanish on dark.
+function ppsColor(pps){ return heatColor(0.34 + 0.66 * Math.max(0, Math.min(1, (pps - 0.7) / 0.75))); }
 function nbaToPx(x, y) {
   // court x:-25..25 -> padding..W-padding ; y:0..40 -> bottom..top
   const pad = 24, cw = W - pad*2, ch = H - pad*2;
@@ -532,27 +533,30 @@ function drawPassMap(prog){
 
 // ---- NFL "Air Yards": pass frequency + completion% by depth bucket ----
 function buildAirYards(name){ const d=qbData(name); return d?d.depth:[]; }
-function compColor(pct){
-  const t=Math.max(0,Math.min(1,(pct-35)/60));
-  const s=[[240,106,106],[240,184,73],[67,201,138]], seg=t*2, i=Math.floor(seg), f=seg-i, a=s[i], b=s[Math.min(i+1,2)];
-  return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
-}
+function compColor(pct){ return heatColor((pct-35)/60); }
 function drawAirYards(prog){
   const items=state.items, n=items.length; if(!n||items[0].freq===undefined) return;
-  const padL=112, padR=100, padT=26, gap=22, trackW=W-padL-padR;
-  const rowH=Math.min(32,(H-padT*2-gap*(n-1))/n), totalH=n*rowH+(n-1)*gap, startY=padT+((H-padT*2)-totalH)/2;
+  const padX=60, padT=30, padB=40, fieldW=W-padX*2, fieldH=H-padT-padB;
+  const dTop=32, dBot=-6, depthY=d=>(H-padB)-((d-dBot)/(dTop-dBot))*fieldH;
+  const ranges=[[-6,0],[0,5],[5,10],[10,15],[15,20],[20,32]];
   const maxFreq=Math.max(...items.map(d=>d.freq),0.01);
-  ctx.save(); ctx.textBaseline='middle';
+  ctx.save();
+  ctx.fillStyle='rgba(56,180,120,0.045)'; ctx.fillRect(padX,padT,fieldW,fieldH);
+  ctx.strokeStyle='rgba(255,255,255,0.09)'; ctx.strokeRect(padX,padT,fieldW,fieldH);
+  ctx.textBaseline='middle';
   items.forEach((it,i)=>{
-    const y=startY+i*(rowH+gap), col=compColor(it.compPct);
-    ctx.fillStyle='#cfd6e6'; ctx.font='600 14px ui-sans-serif, system-ui'; ctx.textAlign='right'; ctx.fillText(it.label, padL-14, y+rowH/2);
-    ctx.fillStyle='rgba(255,255,255,0.04)'; rr(padL,y,trackW,rowH,rowH/2); ctx.fill();
-    const w=Math.max(rowH,(it.freq/maxFreq)*trackW*prog);
-    ctx.fillStyle=barGradH(padL,padL+w,col); ctx.shadowColor=col; ctx.shadowBlur=14; rr(padL,y,w,rowH,rowH/2); ctx.fill(); ctx.shadowBlur=0;
-    ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 13px ui-sans-serif, system-ui';
-    ctx.fillText(it.compPct+'% complete', padL+w+12, y+rowH/2);
-    it._rect=[padL,y,trackW,rowH];
+    const [lo,hi]=ranges[i]||[0,5], y1=depthY(hi), y0=depthY(lo), col=compColor(it.compPct), freqN=it.freq/maxFreq;
+    ctx.globalAlpha=(0.14+0.86*freqN)*prog; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=14*freqN;
+    ctx.fillRect(padX+1.5, y1, fieldW-3, y0-y1);
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+    ctx.fillStyle='#eef1f7'; ctx.font='700 12.5px ui-sans-serif, system-ui'; ctx.textAlign='left'; ctx.fillText(it.label, padX+12, (y0+y1)/2);
+    ctx.textAlign='right'; ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillText(it.compPct+'% complete', padX+fieldW-12, (y0+y1)/2);
+    it._rect=[padX,y1,fieldW,y0-y1];
   });
+  const yLos=depthY(0); ctx.strokeStyle='rgba(56,225,255,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(padX,yLos); ctx.lineTo(padX+fieldW,yLos); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(56,225,255,0.65)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  ctx.fillText('line of scrimmage', W/2, yLos-8);
   ctx.restore();
 }
 
@@ -574,26 +578,25 @@ function buildRange(name) {
 }
 function drawRange(prog) {
   const bins = state.items, n = bins.length;
-  if (!n || bins[0].freq===undefined) return; // stale items during a view switch
-  const padL=44, padR=22, padT=30, padB=46, plotW=W-padL-padR, plotH=H-padT-padB;
-  const maxFreq = Math.max(...bins.map(b=>b.freq), 0.01), slot = plotW/n, bw = slot*0.66;
+  if (!n || bins[0].freq===undefined) return;
+  const hoopX=W/2, hoopY=H-48, maxR=Math.min(W*0.46, H-84), ftToR=maxR/RANGE_MAX;
+  const maxFreq=Math.max(...bins.map(b=>b.freq),0.01);
+  const a0=Math.PI*1.05, a1=Math.PI*1.95; // upward-facing arc (toward the court)
   ctx.save();
-  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
-  for (let g=1; g<=4; g++){ const y=(H-padB)-(g/4)*plotH; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke(); }
-  const x3 = padL + (23.75/RANGE_MAX)*plotW; // 3-point line marker
-  ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.setLineDash([4,4]);
-  ctx.beginPath(); ctx.moveTo(x3,padT); ctx.lineTo(x3,H-padB); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='center';
-  ctx.fillText('3PT line', x3, padT-8);
-  bins.forEach((b,i)=>{
-    const h=(b.freq/maxFreq)*plotH*prog; if (h<0.8) return;
-    const x=padL+i*slot+(slot-bw)/2, y=(H-padB)-h, col=ppsColor(b.pps);
-    ctx.fillStyle=barGradV(y, H-padB, col); ctx.shadowColor=col; ctx.shadowBlur=12;
-    rr(x, y, bw, h, Math.min(4,bw/2)); ctx.fill(); ctx.shadowBlur=0;
-    b._rect=[x, y, bw, h];
+  // faint 3-point arc reference
+  ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(hoopX,hoopY, 23.75*ftToR, a0, a1); ctx.stroke();
+  // glowing rings radiating from the basket, brightness = frequency, hue = efficiency
+  bins.forEach((b)=>{
+    const freqN=b.freq/maxFreq; if(freqN<0.015) return;
+    const r0=b.d0*ftToR, r1=(b.d0+RANGE_BIN)*ftToR, col=ppsColor(b.pps);
+    ctx.globalAlpha=(0.2+0.8*freqN)*prog; ctx.shadowColor=col; ctx.shadowBlur=18*freqN; ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(hoopX,hoopY, r1, a0, a1); ctx.arc(hoopX,hoopY, r0, a1, a0, true); ctx.closePath(); ctx.fill();
   });
-  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
-  for (let ft=0; ft<=RANGE_MAX; ft+=10){ ctx.fillText(ft+' ft', padL+(ft/RANGE_MAX)*plotW, H-padB+16); }
+  ctx.globalAlpha=1; ctx.shadowBlur=0;
+  ctx.strokeStyle='#f5b342'; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(hoopX,hoopY,5,0,Math.PI*2); ctx.stroke(); // hoop
+  ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  for(let ft=10; ft<=30; ft+=10){ ctx.fillText(ft+' ft', hoopX, hoopY - ft*ftToR - 5); }
   ctx.restore();
 }
 
@@ -639,25 +642,27 @@ function buildDamage(name, key) {
 }
 function drawDamage(prog) {
   const fields = state.items;
-  if (!fields.length || fields[0].field===undefined) return; // stale items during a view switch
-  const padL=100, padR=92, padT=30, gap=36, trackW=W-padL-padR;
-  const rowH=Math.min(40,(H-padT*2-gap*2)/3), totalH=3*rowH+2*gap, startY=padT+((H-padT*2)-totalH)/2;
+  if (!fields.length || fields[0].field===undefined) return;
+  drawField();
+  const { cx, hy } = fieldGeom();
+  const wedges = { Left:[-45,-15], Center:[-15,15], Right:[15,45] };
   const maxTotal = Math.max(...fields.map(f=>f.total), 1);
-  const order = [['Out',SPRAY.out],['Single',SPRAY.single],['Double',SPRAY.double],['Home run',SPRAY.hr]];
-  ctx.save(); ctx.textBaseline='middle';
-  fields.forEach((f,i)=>{
-    const y=startY+i*(rowH+gap);
-    ctx.fillStyle='#cfd6e6'; ctx.font='600 15px ui-sans-serif, system-ui'; ctx.textAlign='right';
-    ctx.fillText(f.field+' field', padL-14, y+rowH/2);
-    ctx.fillStyle='rgba(255,255,255,0.04)'; rr(padL,y,trackW,rowH,rowH/2); ctx.fill();
-    const barW=Math.max(rowH,(f.total/maxTotal)*trackW*prog);
-    ctx.save(); rr(padL,y,barW,rowH,rowH/2); ctx.clip(); // rounded pill; segments fill inside
-    let acc=0;
-    order.forEach(([type,color])=>{ const seg=f.total?(f[type]/f.total)*barW:0; ctx.fillStyle=barGradV(y,y+rowH,color); ctx.fillRect(padL+acc, y, seg+0.6, rowH); acc+=seg; });
-    ctx.restore();
-    ctx.fillStyle='#eef1f7'; ctx.textAlign='left'; ctx.font='700 14px ui-sans-serif, system-ui';
-    ctx.fillText(f.total+' balls · '+f['Home run']+' HR', padL+barW+12, y+rowH/2);
-    f._rect=[padL, y, trackW, rowH];
+  ctx.save();
+  fields.forEach((f)=>{
+    const [wa0,wa1] = wedges[f.field] || [-15,15];
+    const tb = (f.Single + 2*f.Double + 4*f['Home run']) / (f.total||1); // total bases per ball = damage
+    const col = heatColor((tb-0.15)/0.85), vol = f.total/maxTotal;
+    ctx.globalAlpha=(0.18+0.55*vol)*prog; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=26;
+    ctx.beginPath(); ctx.moveTo(cx,hy);
+    for(let a=wa0; a<=wa1; a+=2){ const [x,y]=sprayMap(a, fenceAt(a)); ctx.lineTo(x,y); }
+    ctx.closePath(); ctx.fill();
+  });
+  ctx.globalAlpha=1; ctx.shadowBlur=0; ctx.textAlign='center';
+  fields.forEach((f)=>{
+    const [wa0,wa1] = wedges[f.field] || [-15,15];
+    const [lx,ly] = sprayMap((wa0+wa1)/2, 235);
+    ctx.fillStyle='#eef1f7'; ctx.font='700 14px ui-sans-serif, system-ui'; ctx.fillText(f.field.toUpperCase(), lx, ly-6);
+    ctx.fillStyle='rgba(255,255,255,0.82)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.fillText(f.total+' balls · '+f['Home run']+' HR', lx, ly+10);
   });
   ctx.restore();
 }
@@ -906,13 +911,13 @@ function setInsight() {
   }
   if (v==='gravity') {
     el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
-      `<b>Red</b> spots are where he scores the most, so defenders have to guard him tight there. ` +
-      `<b>Blue</b> spots are where he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
+      `<b>Gold</b> spots are where he scores the most, so defenders have to guard him tight there. ` +
+      `<b>Dark</b> spots are where he misses a lot, so they can back off. He does the most damage <b>${nbaBestArea(buildDiet(state.player))}</b>.`;
   } else if (v==='diet') {
     const top = [...buildDiet(state.player)].sort((a,b)=>b.freq-a.freq)[0];
     el.innerHTML = `This shows what kinds of shots <span class="k">${state.player}</span> likes to take. ` +
       `The <b>longer the bar</b>, the more often he shoots from there. The <b>color</b> shows how good he is at it — ` +
-      `red means great, blue means he misses a lot. Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
+      `gold means great, dark means he misses a lot. Most of his shots are <b>${top.label.toLowerCase()}</b>.`;
   } else if (v==='arsenal') {
     const pp = pitcherPitches(state.player);
     const best = [...pp].sort((a,b)=>b.whiff-a.whiff)[0];
@@ -940,8 +945,7 @@ function setInsight() {
     const bins = state.items;
     const peak = [...bins].sort((a,b)=>b.freq-a.freq)[0];
     const from3 = bins.filter(b=>b.d0>=23).reduce((s,b)=>s+b.freq,0);
-    el.innerHTML = `This shows how far from the basket <span class="k">${state.player}</span> shoots. ` +
-      `<b>Taller bars</b> = he shoots more from that distance; <b>color</b> shows how good he is there (red = great). ` +
+    el.innerHTML = `Each glowing ring is a distance from the hoop. <b>Brighter rings</b> = <span class="k">${state.player}</span> shoots more from there; <b>hotter color</b> (toward gold) = more efficient. ` +
       `Most of his shots come from around <b>${peak.d0}–${peak.d0+RANGE_BIN} feet</b>, and <b>${Math.round(from3*100)}%</b> come from three-point range or deeper.`;
   } else if (v==='evolution') {
     const yrs = state.items;
@@ -958,9 +962,8 @@ function setInsight() {
     const matchLabel = window.__REAL_HITTERS
       ? ({all:'all pitchers', L:'lefties', R:'righties'}[state.vsPitcher] || 'all pitchers')
       : state.vsPitcher;
-    el.innerHTML = `Where <span class="k">${state.player}</span> hits the ball against <span class="k">${matchLabel}</span>, split into left / center / right field. ` +
-      `<b>Longer bars</b> = more balls hit there; the colors show the result (gray out, blue single, green double, gold home run). ` +
-      `He does the most damage to <b>${best.field} field</b> (${best['Home run']} home runs there).`;
+    el.innerHTML = `Where <span class="k">${state.player}</span> does damage against <span class="k">${matchLabel}</span>. Each field wedge glows <b>hotter</b> the more total bases he produces there, and <b>brighter</b> the more balls he hits that way. ` +
+      `His biggest damage zone is <b>${best.field} field</b> (${best['Home run']} home runs there).`;
   } else if (v==='passmap') {
     const passes = state.items;
     const tds = passes.filter(p=>p.out==='TD').length, deep = passes.filter(p=>p.depth>=20).length;
@@ -970,7 +973,7 @@ function setInsight() {
     const d = qbData(state.player);
     const comp = d ? Math.round(d.depth.reduce((s,b)=>s+b.freq*b.compPct,0)) : 0;
     const deepPct = d ? Math.round(d.depth.filter(b=>b.label==='20+'||b.label==='15–20').reduce((s,b)=>s+b.freq,0)*100) : 0;
-    el.innerHTML = `How deep <span class="k">${state.player}</span> throws. <b>Longer bars</b> = more passes at that depth; <b>color</b> = how often they're caught (green = high, red = low). ` +
+    el.innerHTML = `How deep <span class="k">${state.player}</span> throws, shown as depth bands on the field (line of scrimmage at the bottom). <b>Brighter bands</b> = he throws there more; <b>hotter color</b> = caught more often. ` +
       `Overall he completes <b>${comp}%</b>, with <b>${deepPct}%</b> of throws going 15+ yards downfield.`;
   }
 }
@@ -988,8 +991,8 @@ function setLegend() {
     el.innerHTML = Object.entries(MLB_TYPES).map(([t,c])=>`<div class="item"><span class="dot" style="color:${c};background:${c}"></span>${t}</div>`).join('') +
       `<div class="item" style="color:var(--muted)">bigger circle = thrown more often</div>`;
   } else if (v==='range') {
-    el.innerHTML = `<div class="item">misses more <span class="grad"></span> scores more</div>
-      <div class="item" style="color:var(--muted)">bar height = how often he shoots from there</div>`;
+    el.innerHTML = `<div class="item">less efficient <span class="grad"></span> more efficient</div>
+      <div class="item" style="color:var(--muted)">brightness = how often he shoots from there</div>`;
   } else if (v==='evolution') {
     const types = [...new Set(buildEvolution(state.player).flatMap(y=>y.pitches.map(p=>p.t)))];
     el.innerHTML = types.map(t=>`<div class="item"><span class="dot" style="color:${MLB_TYPES[t]||'#9aa6b2'};background:${MLB_TYPES[t]||'#9aa6b2'}"></span>${t}</div>`).join('') +
@@ -1001,9 +1004,12 @@ function setLegend() {
       `<div class="item"><span class="dot" style="color:${NFL_OUT.TD};background:${NFL_OUT.TD}"></span>Touchdown</div>` +
       `<div class="item"><span class="dot" style="color:${NFL_OUT.INT};background:${NFL_OUT.INT}"></span>Interception</div>`;
   } else if (v==='airyards') {
-    el.innerHTML = `<div class="item">rarely caught <span class="grad" style="background:linear-gradient(90deg,#f06a6a,#ffd24a,#43c98a)"></span> often caught</div>
-      <div class="item" style="color:var(--muted)">bar length = how often he throws there</div>`;
-  } else { // spray + damage share outcome colors
+    el.innerHTML = `<div class="item">rarely caught <span class="grad"></span> often caught</div>
+      <div class="item" style="color:var(--muted)">brightness = how often he throws there</div>`;
+  } else if (v==='damage') {
+    el.innerHTML = `<div class="item">less damage <span class="grad"></span> more damage</div>
+      <div class="item" style="color:var(--muted)">brightness = how many balls he hits that way</div>`;
+  } else { // spray shares outcome colors
     el.innerHTML =
       `<div class="item"><span class="dot" style="color:${SPRAY.out};background:${SPRAY.out}"></span>Out</div>` +
       `<div class="item"><span class="dot" style="color:${SPRAY.single};background:${SPRAY.single}"></span>Single</div>` +
