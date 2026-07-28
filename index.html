@@ -133,6 +133,7 @@
       <button class="sport active" data-sport="nba">NBA</button>
       <button class="sport" data-sport="mlb">MLB</button>
       <button class="sport" data-sport="nfl">NFL</button>
+      <button class="sport" data-sport="nhl">NHL</button>
     </div>
   </header>
 
@@ -160,7 +161,7 @@
   </div>
 
   <footer>
-    <span class="badge" id="badge">PROTOTYPE · sample data</span>&nbsp; one engine, every sport — live NBA Stats &amp; MLB Statcast feeds wire in next.
+    <span class="badge" id="badge">PROTOTYPE · sample data</span>&nbsp; one engine, every sport — real NBA, MLB, NFL &amp; NHL feeds.
   </footer>
 </div>
 
@@ -168,6 +169,7 @@
 <script src="mlb-data.js"></script>
 <script src="nba-data.js"></script>
 <script src="nfl-data.js"></script>
+<script src="nhl-data.js"></script>
 <script>
 // ---------- tiny deterministic RNG (stable layouts) ----------
 function rng(seed) { let s = seed >>> 0; return () => { s = (s*1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
@@ -335,18 +337,19 @@ const VIEW_META = {
   damage:    { sport:'mlb', sub:'Damage',            title:'Where he does his damage' },
   passmap:   { sport:'nfl', sub:'Passing Map',       title:'Where a QB throws it' },
   airyards:  { sport:'nfl', sub:'Air Yards',         title:'How deep he throws — and how often it connects' },
+  danger:    { sport:'nhl', sub:'Shot Danger',       title:"Where he's dangerous on the ice" },
 };
-const SPORT_VIEWS = { nba:['gravity','diet','range'], mlb:['arsenal','nasty','evolution','spray','damage'], nfl:['passmap','airyards'] };
-const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)', nfl:'P.Mahomes' };
+const SPORT_VIEWS = { nba:['gravity','diet','range'], mlb:['arsenal','nasty','evolution','spray','damage'], nfl:['passmap','airyards'], nhl:['danger'] };
+const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)', nfl:'P.Mahomes', nhl:'Connor McDavid' };
 
 // Which kind of player each view is about (chips + defaults follow this).
-const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter', passmap:'qb', airyards:'qb' };
-const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger' };
+const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter', passmap:'qb', airyards:'qb', danger:'skater' };
+const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger', skater:'Connor McDavid' };
 
 let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', compare:false, playerB:null, overlay:false, items:[], t0:0, raf:0 };
 const OVERLAY_VIEWS = new Set(['diet','range','damage']); // bar views that overlay cleanly
 const sport = () => VIEW_META[state.view].sport;
-const isScatter = () => state.view==='gravity' || state.view==='arsenal';
+const isScatter = () => state.view==='gravity' || state.view==='arsenal' || state.view==='danger';
 
 // A real pitcher has {seasons:{'2024':[...]}}; a sample archetype has {pitches:[...]}.
 function pitcherSeasons(name){ const p=MLB_PLAYERS[name]; return p && p.seasons ? Object.keys(p.seasons).sort() : null; }
@@ -761,9 +764,10 @@ function buildNasty(name) {
 
 // ---- scatter layout (Scoring Gravity + Pitch Arsenal need pixel positions) ----
 function layoutScatter() {
-  const nba = state.view==='gravity';
   for (const p of state.items) {
-    const [px,py] = nba ? nbaToPx(p.x,p.y) : mlbToPx(p.hb,p.vb);
+    const [px,py] = state.view==='gravity' ? nbaToPx(p.x,p.y)
+                  : state.view==='danger'  ? rinkToPx(p.x,p.y)
+                  :                          mlbToPx(p.hb,p.vb);
     p.px = px; p.py = py;
   }
 }
@@ -1004,6 +1008,91 @@ function setInsight() {
   canvas.setAttribute('aria-label', el.textContent); // screen-reader alt text = the plain-English read
 }
 // ==================================================================
+// NHL — Shot Danger: every shot on a rink, heat-colored by expected goals (xG).
+// Data (MoneyPuck via fetch-nhl.mjs): skaters[name].seasons[year].shots = [[x,y,xg,goal]].
+// Rink coords: x = xCordAdjusted (goal line at 89), y = yCordAdjusted (-42.5..42.5).
+// ==================================================================
+const NHL_SKATERS = {};
+if (window.SIGHTLINE_NHL && window.SIGHTLINE_NHL.skaters && Object.keys(window.SIGHTLINE_NHL.skaters).length) {
+  Object.assign(NHL_SKATERS, window.SIGHTLINE_NHL.skaters);
+  window.__REAL_NHL = true;
+  DEFAULT_PLAYER.nhl = Object.keys(NHL_SKATERS)[0];
+  ENTITY_DEFAULT.skater = DEFAULT_PLAYER.nhl;
+  const badge = document.getElementById('badge'); if (badge) badge.textContent = 'REAL data — NBA · MLB · NFL · NHL';
+}
+function nhlSeasons(name){ const s=NHL_SKATERS[name]; return s && s.seasons ? Object.keys(s.seasons).sort() : null; }
+function nhlData(name){
+  const s=NHL_SKATERS[name]; if(!s || !s.seasons) return null;
+  const ys=Object.keys(s.seasons).sort(); const y=ys.includes(state.season)?state.season:ys[ys.length-1];
+  return s.seasons[y];
+}
+function buildNHL(name){
+  const d = nhlData(name); if(!d) return [];
+  return d.shots.map(s=>({ x:s[0], y:s[1], xg:s[2], goal:s[3] }));
+}
+// Offensive-zone rink model: goal at bottom-center (x=89), zone fanning up to the blue line.
+function rinkGeom(){
+  const pad=24, WIDE=85, DEEP=72; // rink is 85ft wide; we show ~72ft deep (behind net -> blue line)
+  const scale=Math.min((W-pad*2)/WIDE, (H-pad*2)/DEEP);
+  return { scale, cx:W/2, topY:(H - DEEP*scale)/2, dTop:64, dBot:-8 };
+}
+function rinkToPx(x, y){
+  const g=rinkGeom(); const d = 89 - x; // feet in front of the goal line
+  return [ g.cx + y*g.scale, g.topY + (g.dTop - d)*g.scale ];
+}
+function drawRink(){
+  const g=rinkGeom(), s=g.scale, cx=g.cx;
+  const yAt = d => g.topY + (g.dTop - d)*s;
+  const L = cx - 42.5*s, R = cx + 42.5*s;
+  const goalY = yAt(0), blueY = yAt(64), backY = yAt(-8), rad = 14*s;
+  ctx.save();
+  // boards: side rails + rounded end boards behind the net (open at the blue line / top)
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(L, blueY); ctx.lineTo(L, backY - rad);
+  ctx.quadraticCurveTo(L, backY, L + rad, backY);
+  ctx.lineTo(R - rad, backY); ctx.quadraticCurveTo(R, backY, R, backY - rad);
+  ctx.lineTo(R, blueY); ctx.stroke();
+  // blue line (top of zone)
+  ctx.strokeStyle='rgba(86,150,220,0.5)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(L, blueY); ctx.lineTo(R, blueY); ctx.stroke();
+  // goal line (red) + net + crease
+  ctx.strokeStyle='rgba(214,72,80,0.55)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(L, goalY); ctx.lineTo(R, goalY); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.strokeRect(cx - 3*s, goalY, 6*s, 4*s); // net (behind line)
+  ctx.fillStyle='rgba(86,150,220,0.10)'; ctx.strokeStyle='rgba(86,150,220,0.4)';
+  ctx.beginPath(); ctx.arc(cx, goalY, 6*s, Math.PI, 2*Math.PI); ctx.fill(); ctx.stroke(); // crease
+  // faceoff circles + dots (offensive zone dots at ~x=69 -> d=20, y=±22)
+  ctx.strokeStyle='rgba(214,72,80,0.32)'; ctx.fillStyle='rgba(214,72,80,0.5)';
+  for (const fy of [-22, 22]){
+    const fx = cx + fy*s, fpy = yAt(20);
+    ctx.beginPath(); ctx.arc(fx, fpy, 15*s, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(fx, fpy, 1.6*s, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawDanger(prog){
+  if (!state.items.length) return;
+  drawRink();
+  const n=state.items.length;
+  ctx.save();
+  for (let i=0;i<n;i++){
+    const p=state.items[i];
+    const appear=Math.max(0, Math.min(1, prog*1.4 - (i/n)*0.4)); if(appear<=0) continue;
+    const e=1-Math.pow(1-appear,3);
+    const t=Math.min(1, p.xg/0.3); // danger normalized (xG >= 0.30 = full red)
+    const col=heatColor(t), r=(p.goal?5.2:3.4)*e;
+    ctx.globalAlpha=(p.goal?0.95:0.68)*e; ctx.shadowColor=col; ctx.shadowBlur=(4 + heatGlow(t))*e; ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(p.px, p.py, r, 0, Math.PI*2); ctx.fill();
+    if (p.goal){ // ring goals so you can see where he actually scored
+      ctx.shadowBlur=0; ctx.globalAlpha=e; ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.arc(p.px, p.py, r+2.6, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ==================================================================
 // VIEW REGISTRY — one entry per view consolidates the per-view code that
 // used to be smeared across computeItems / drawCurrent / setInsight /
 // setLegend / inspectAt / resize / setSeasons. Adding a view = one entry
@@ -1011,6 +1100,29 @@ function setInsight() {
 // Placed after all build/draw/field fns and color consts are defined.
 // ==================================================================
 const VIEWS = {
+  danger: {
+    build: () => buildNHL(state.player),
+    draw: drawDanger,
+    aspD: 0.82, aspM: 1.05,
+    seasons: () => nhlSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">low danger <span class="grad"></span> high danger</div>
+      <div class="item" style="color:var(--muted)">ringed dot = goal · brighter = more dangerous</div>`;
+    },
+    insight: (el) => {
+      const shots = state.items, goals = shots.filter(s=>s.goal).length;
+      const highD = shots.filter(s=>s.xg>=0.15).length;
+      el.innerHTML = `Every dot is a shot <span class="k">${state.player}</span> took. ` +
+        `<b style="color:#c33a46">Deep red</b> = high-danger chances (great odds of a goal); <b style="color:#8fbce8">light blue</b> = low-danger from far out. ` +
+        `<b>Ringed</b> dots are goals — he buried <b>${goals}</b>${state.season?` in ${state.season}`:''} and generated <b>${highD}</b> high-danger looks.`;
+    },
+    hit: (mx,my) => {
+      let best=null, bd=1e9;
+      for (const p of state.items){ const dx=p.px-mx, dy=p.py-my, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
+      if (best && bd<300){ return { html:`<b>${best.goal?'GOAL':'Shot'}</b> · ${Math.round(best.xg*100)}% goal chance`, tx:best.px, ty:best.py }; }
+      return null;
+    },
+  },
   gravity: {
     build: () => buildNBA(state.player).pts,
     draw: drawScatter,
@@ -1240,7 +1352,8 @@ function setLegend() {
 }
 function chipData() {
   const e = ENTITY[state.view];
-  return e==='scorer' ? NBA_PLAYERS : e==='pitcher' ? MLB_PLAYERS : e==='hitter' ? MLB_HITTERS : NFL_QBS;
+  return e==='scorer' ? NBA_PLAYERS : e==='pitcher' ? MLB_PLAYERS : e==='hitter' ? MLB_HITTERS
+       : e==='skater' ? NHL_SKATERS : NFL_QBS;
 }
 function setChips() {
   const el = document.getElementById('chips');
@@ -1330,6 +1443,7 @@ window.addEventListener('resize', resize);
 
 // init
 if (!window.__REAL_NFL) { const nb=document.querySelector('.sport[data-sport="nfl"]'); if(nb) nb.style.display='none'; }
+if (!window.__REAL_NHL) { const hb=document.querySelector('.sport[data-sport="nhl"]'); if(hb) hb.style.display='none'; }
 setTitles(); setViews(); setChips(); setMatchup(); setSeasons(); setComparebar(); setLegend(); rebuild(); setInsight();
 setTimeout(resize, 30);
 </script>
