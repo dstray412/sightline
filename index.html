@@ -497,6 +497,30 @@ function passMapToPx(lane, depth){
   const y = (H - padB) - ((depth + 6) / 52) * (H - padT - padB);
   return [x, y];
 }
+// Vertical football field (LOS/near at bottom, downfield up). Returns depthY(yards).
+function drawFootballField(x, y, w, h, dBot, dTop){
+  const depthY = d => (y+h) - ((d-dBot)/(dTop-dBot))*h;
+  ctx.save();
+  const g=ctx.createLinearGradient(0,y,0,y+h); g.addColorStop(0,'rgba(24,64,40,0.5)'); g.addColorStop(1,'rgba(15,42,27,0.6)');
+  ctx.fillStyle=g; ctx.fillRect(x,y,w,h);
+  for (let d=Math.floor(dBot/5)*5; d<dTop; d+=5){ // mowing stripes
+    const yT=depthY(d+5), yB=depthY(d);
+    if (Math.floor(d/5)%2===0){ ctx.fillStyle='rgba(255,255,255,0.022)'; ctx.fillRect(x, Math.min(yT,yB), w, Math.abs(yB-yT)); }
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.13)'; ctx.lineWidth=1; // hash marks (per yard, two interior columns)
+  const hx=[x+w*0.32, x+w*0.68];
+  for (let d=Math.ceil(dBot); d<=dTop; d++){ const yy=depthY(d); hx.forEach(px=>{ ctx.beginPath(); ctx.moveTo(px-3,yy); ctx.lineTo(px+3,yy); ctx.stroke(); }); }
+  for (let d=Math.floor(dBot/5)*5; d<=dTop; d+=5){ // yard lines
+    if (d<dBot) continue; const yy=depthY(d);
+    ctx.strokeStyle = d===0 ? 'rgba(56,225,255,0.75)' : 'rgba(255,255,255,0.26)'; ctx.lineWidth = d===0 ? 2 : 1;
+    ctx.beginPath(); ctx.moveTo(x,yy); ctx.lineTo(x+w,yy); ctx.stroke();
+    if (d>0 && d%10===0){ ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='700 12px ui-sans-serif, system-ui';
+      ctx.textAlign='left'; ctx.fillText(d, x+10, yy-4); ctx.textAlign='right'; ctx.fillText(d, x+w-10, yy-4); }
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h); // sidelines
+  ctx.restore();
+  return depthY;
+}
 function drawGridiron(){
   const padX=52, padT=28, padB=42;
   ctx.save();
@@ -517,18 +541,25 @@ function buildPassMap(name){
   return d.passes.map((p,i)=>({ lane:p[0]+(((i*0.6180339887)%1)-0.5)*0.62, depth:p[1], out:p[2], color:NFL_OUT[p[2]]||'#888' }));
 }
 function drawPassMap(prog){
-  drawGridiron();
+  const padX=52, padT=28, padB=42, fieldW=W-padX*2, fieldH=H-padT-padB, dBot=-6, dTop=48;
+  const depthY = drawFootballField(padX, padT, fieldW, fieldH, dBot, dTop);
+  const laneX = lane => W/2 + lane*(fieldW*0.33);
   const n=state.items.length; ctx.save();
   for (let i=0;i<n;i++){
     const p=state.items[i];
     const appear=Math.max(0,Math.min(1,prog*1.4-(i/n)*0.4)); if(appear<=0)continue;
-    const e=1-Math.pow(1-appear,3); const [x,y]=passMapToPx(p.lane,p.depth);
+    const e=1-Math.pow(1-appear,3);
+    const x=laneX(p.lane), y=depthY(Math.max(dBot,Math.min(dTop,p.depth)));
     const big=p.out==='TD'||p.out==='INT';
-    ctx.globalAlpha=(p.out==='I'?0.45:0.92)*e; ctx.shadowColor=p.color; ctx.shadowBlur=(p.out==='I'?0:10)*e; ctx.fillStyle=p.color;
+    ctx.globalAlpha=(p.out==='I'?0.5:0.95)*e; ctx.shadowColor=p.color; ctx.shadowBlur=(p.out==='I'?0:9)*e; ctx.fillStyle=p.color;
     ctx.beginPath(); ctx.arc(x,y,(big?5:3.6)*e,0,Math.PI*2); ctx.fill();
     p._x=x; p._y=y; p._r=big?5:3.6;
   }
   ctx.globalAlpha=1; ctx.restore();
+  ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='11px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  ctx.shadowColor='rgba(0,0,0,0.8)'; ctx.shadowBlur=4;
+  [['LEFT',-1],['MIDDLE',0],['RIGHT',1]].forEach(([lab,l])=>ctx.fillText(lab, laneX(l), padT+14));
+  ctx.shadowBlur=0;
 }
 
 // ---- NFL "Air Yards": pass frequency + completion% by depth bucket ----
@@ -536,27 +567,22 @@ function buildAirYards(name){ const d=qbData(name); return d?d.depth:[]; }
 function compColor(pct){ return heatColor((pct-35)/60); }
 function drawAirYards(prog){
   const items=state.items, n=items.length; if(!n||items[0].freq===undefined) return;
-  const padX=60, padT=30, padB=40, fieldW=W-padX*2, fieldH=H-padT-padB;
-  const dTop=32, dBot=-6, depthY=d=>(H-padB)-((d-dBot)/(dTop-dBot))*fieldH;
+  const padX=58, padT=28, padB=38, fieldW=W-padX*2, fieldH=H-padT-padB, dBot=-6, dTop=32;
+  const depthY = drawFootballField(padX, padT, fieldW, fieldH, dBot, dTop);
   const ranges=[[-6,0],[0,5],[5,10],[10,15],[15,20],[20,32]];
   const maxFreq=Math.max(...items.map(d=>d.freq),0.01);
-  ctx.save();
-  ctx.fillStyle='rgba(56,180,120,0.045)'; ctx.fillRect(padX,padT,fieldW,fieldH);
-  ctx.strokeStyle='rgba(255,255,255,0.09)'; ctx.strokeRect(padX,padT,fieldW,fieldH);
-  ctx.textBaseline='middle';
+  ctx.save(); ctx.textBaseline='middle';
   items.forEach((it,i)=>{
     const [lo,hi]=ranges[i]||[0,5], y1=depthY(hi), y0=depthY(lo), col=compColor(it.compPct), freqN=it.freq/maxFreq;
-    ctx.globalAlpha=(0.14+0.86*freqN)*prog; ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=14*freqN;
-    ctx.fillRect(padX+1.5, y1, fieldW-3, y0-y1);
-    ctx.globalAlpha=1; ctx.shadowBlur=0;
-    ctx.fillStyle='#eef1f7'; ctx.font='700 12.5px ui-sans-serif, system-ui'; ctx.textAlign='left'; ctx.fillText(it.label, padX+12, (y0+y1)/2);
-    ctx.textAlign='right'; ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.fillText(it.compPct+'% complete', padX+fieldW-12, (y0+y1)/2);
+    ctx.globalAlpha=(0.1+0.55*freqN)*prog; ctx.fillStyle=col; ctx.fillRect(padX+2, y1, fieldW-4, y0-y1); // translucent over turf
+    ctx.globalAlpha=1; ctx.shadowColor='rgba(0,0,0,0.85)'; ctx.shadowBlur=5;
+    ctx.fillStyle='#fff'; ctx.font='700 12.5px ui-sans-serif, system-ui'; ctx.textAlign='left'; ctx.fillText(it.label, padX+14, (y0+y1)/2);
+    ctx.textAlign='right'; ctx.fillText(it.compPct+'% complete', padX+fieldW-14, (y0+y1)/2);
+    ctx.shadowBlur=0;
     it._rect=[padX,y1,fieldW,y0-y1];
   });
-  const yLos=depthY(0); ctx.strokeStyle='rgba(56,225,255,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
-  ctx.beginPath(); ctx.moveTo(padX,yLos); ctx.lineTo(padX+fieldW,yLos); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle='rgba(56,225,255,0.65)'; ctx.font='10px ui-sans-serif, system-ui'; ctx.textAlign='center';
-  ctx.fillText('line of scrimmage', W/2, yLos-8);
+  const yLos=depthY(0); ctx.fillStyle='#38e1ff'; ctx.font='700 10px ui-sans-serif, system-ui'; ctx.textAlign='center';
+  ctx.shadowColor='rgba(0,0,0,0.8)'; ctx.shadowBlur=4; ctx.fillText('LINE OF SCRIMMAGE', W/2, yLos+13); ctx.shadowBlur=0;
   ctx.restore();
 }
 
