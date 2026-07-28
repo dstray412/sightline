@@ -3,6 +3,7 @@
 // directly — see pipeline.test.mjs. The fetch-*.mjs scripts import from here so
 // the CSV parser, sampler, merge, and the coordinate transforms live in ONE place.
 import { readFileSync } from "node:fs";
+import { inflateRawSync } from "node:zlib";
 
 // --- CSV: minimal splitter that handles quoted fields + escaped quotes ("") ---
 export function splitCsv(line){
@@ -36,6 +37,18 @@ export function mergeSeasons(existing, fresh){
     Object.assign(existing[name].seasons, d.seasons);
   }
   return existing;
+}
+
+// --- unzip a single-entry zip in pure Node (used by the NBA + NHL fetchers) ---
+export function unzipSingle(buf){
+  if (buf.readUInt32LE(0) !== 0x04034b50) throw new Error("not a zip file");
+  const method = buf.readUInt16LE(8);
+  let compSize = buf.readUInt32LE(18);
+  const nameLen = buf.readUInt16LE(26), extraLen = buf.readUInt16LE(28);
+  const start = 30 + nameLen + extraLen;
+  if (compSize === 0) { const cd = buf.indexOf(Buffer.from([0x50,0x4b,0x01,0x02])); compSize = buf.readUInt32LE(cd + 20); }
+  const comp = buf.subarray(start, start + compSize);
+  return method === 0 ? comp : inflateRawSync(comp);
 }
 
 // ===================== MLB transforms =====================
@@ -79,3 +92,7 @@ export function nbaShotCoord(locX, locY){
 // ===================== NFL transforms =====================
 export function nflOutcome(td, intc, comp){ return td ? "TD" : intc ? "INT" : comp ? "C" : "I"; }
 export function nflLane(loc){ return loc==="left" ? -1 : loc==="right" ? 1 : 0; }
+
+// ===================== NHL transforms =====================
+// MoneyPuck `event` -> did this shot attempt score? (GOAL vs SHOT-on-net vs MISS)
+export function isGoal(event){ return event === "GOAL"; }

@@ -6,6 +6,7 @@ import {
   hitAngle, outcomeOf, pitchBreak,
   nbaShotCoord, HOOP_Y,
   nflOutcome, nflLane,
+  unzipSingle, isGoal,
 } from "./pipeline.mjs";
 
 test("splitCsv: plain, quoted-with-comma, escaped quotes, empty fields", () => {
@@ -85,4 +86,14 @@ test("nflLane: left/right/middle -> -1/1/0", () => {
   assert.equal(nflLane("left"), -1);
   assert.equal(nflLane("right"), 1);
   assert.equal(nflLane("middle"), 0);
+});
+
+test("unzipSingle: rejects a non-zip buffer", () => {
+  assert.throws(() => unzipSingle(Buffer.from("not a zip file at all")), /not a zip file/);
+});
+
+test("isGoal: only GOAL scores", () => {
+  assert.equal(isGoal("GOAL"), true);
+  assert.equal(isGoal("SHOT"), false);
+  assert.equal(isGoal("MISS"), false);
 });

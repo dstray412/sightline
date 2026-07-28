@@ -2,8 +2,7 @@
 // stats.nba.com blocks datacenter IPs, so we use DomSamangy/NBA_Shots_04_25 (every shot, by season).
 // Run:  node fetch-nba.mjs      (Node 18+, no installs — unzips with built-in zlib)
 import { writeFileSync } from "node:fs";
-import { inflateRawSync } from "node:zlib";
-import { splitCsv, sample, loadExisting, mergeSeasons, nbaShotCoord, NBA_ZONE_AREA as ZONE_AREA, HOOP_Y } from "./pipeline.mjs";
+import { splitCsv, sample, loadExisting, mergeSeasons, unzipSingle, nbaShotCoord, NBA_ZONE_AREA as ZONE_AREA, HOOP_Y } from "./pipeline.mjs";
 
 // `--refresh` = pull ONLY the current season and merge into existing data (fast daily update).
 const REFRESH = process.argv.includes("--refresh");
@@ -22,16 +21,6 @@ const PLAYERS = [
 // ZONE_AREA (as NBA_ZONE_AREA), HOOP_Y, splitCsv, sample, loadExisting, mergeSeasons, nbaShotCoord: from ./pipeline.mjs
 const AREAS = ["At the rim", "Close range", "Mid-range", "3-pointers"];
 
-function unzipSingle(buf){
-  if (buf.readUInt32LE(0) !== 0x04034b50) throw new Error("not a zip file");
-  const method = buf.readUInt16LE(8);
-  let compSize = buf.readUInt32LE(18);
-  const nameLen = buf.readUInt16LE(26), extraLen = buf.readUInt16LE(28);
-  const start = 30 + nameLen + extraLen;
-  if (compSize === 0) { const cd = buf.indexOf(Buffer.from([0x50,0x4b,0x01,0x02])); compSize = buf.readUInt32LE(cd + 20); }
-  const comp = buf.subarray(start, start + compSize);
-  return method === 0 ? comp : inflateRawSync(comp);
-}
 
 const want = new Set(PLAYERS);
 
