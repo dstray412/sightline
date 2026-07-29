@@ -45,6 +45,7 @@ guard NHL nhl-data.js "$NHL_BEFORE" "$(count nhl-data.js SIGHTLINE_NHL skaters)"
 if ! git diff --quiet -- mlb-data.js nba-data.js nfl-data.js nhl-data.js 2>/dev/null; then
   git add mlb-data.js nba-data.js nfl-data.js nhl-data.js
   git commit -m "data: daily refresh $(date +%F)" >> refresh.log 2>&1
+  git push origin main >> refresh.log 2>&1 && echo "pushed to GitHub (live site updates)" >> refresh.log
   echo "committed refreshed data" >> refresh.log
 else
   echo "no data changes" >> refresh.log
