@@ -11,7 +11,7 @@
 <link href="fonts/space-grotesk.css" rel="stylesheet">
 <style>
   :root {
-    --bg: #07080c; --panel: rgba(255,255,255,0.04); --line: rgba(255,255,255,0.09);
+    --bg: #12161f; --panel: rgba(255,255,255,0.05); --line: rgba(255,255,255,0.10);
     --text: #eef1f7; --muted: #a6b0c4; --accent: #38e1ff; --accent2: #7c5cff;
     --display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   }
@@ -39,7 +39,7 @@
     color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
   .sport:not(.active):hover { color: var(--text); }
 
-  .stage { margin-top: 22px; background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+  .stage { margin-top: 22px; background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02));
     border: 1px solid var(--line); border-radius: 20px; padding: 20px; position: relative; overflow: hidden; }
   .toprow { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
   .subtitle { font-family: var(--display); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
@@ -92,7 +92,7 @@
   .legend .item { display: flex; align-items: center; gap: 7px; }
   .dot { width: 11px; height: 11px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
   .grad { width: 120px; height: 10px; border-radius: 6px;
-    background: linear-gradient(90deg,#cee7ff,#5ca0dc,#f2e6e8,#d4424a,#84121e); }
+    background: linear-gradient(90deg,#cee7ff,#60a2de,#f2e6e8,#ea5260,#d63040); }
 
   footer { margin-top: 22px; color: var(--muted); font-size: 12px; text-align: center; }
   .badge { display:inline-block; padding: 3px 9px; border:1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; letter-spacing:.04em; }
@@ -226,7 +226,7 @@ function buildNBA(name) {
 // Cold->hot scale: light blue (coldest/lowest) -> warm blush-white -> dark red (hottest/highest). No grey/purple/orange.
 function heatColor(t){
   t = Math.max(0, Math.min(1, t));
-  const stops = [[206,231,255],[92,160,220],[242,230,232],[212,66,74],[132,18,30]];
+  const stops = [[206,231,255],[96,162,222],[242,230,232],[234,82,96],[214,48,64]]; // cleaner dark: vivid hot reds that pop, not muddy maroon
   const seg = t*(stops.length-1), i = Math.floor(seg), f = seg-i, a = stops[i], b = stops[Math.min(i+1,4)];
   return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;
 }
@@ -240,7 +240,7 @@ function nbaToPx(x, y) {
   return [ pad + ((x+25)/50)*cw, H - pad - (y/40)*ch ];
 }
 function drawCourt() {
-  ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1.5;
+  ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.26)'; ctx.lineWidth = 1.5;
   const [bx,by] = nbaToPx(0,0);
   const unit = (W-48)/50; // px per foot (x)
   // baseline
@@ -466,12 +466,12 @@ function drawField(){
   // outfield fence
   ctx.beginPath();
   for (let a=-45;a<=45;a+=2){ const [x,y]=sprayMap(a,fenceAt(a)); a===-45?ctx.moveTo(x,y):ctx.lineTo(x,y); }
-  ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.30)'; ctx.lineWidth=1.5; ctx.stroke();
   // foul lines
-  ctx.strokeStyle='rgba(255,255,255,0.22)';
+  ctx.strokeStyle='rgba(255,255,255,0.38)';
   [-45,45].forEach(a=>{ const [x,y]=sprayMap(a,fenceAt(a)); ctx.beginPath(); ctx.moveTo(cx,hy); ctx.lineTo(x,y); ctx.stroke(); });
   // infield diamond
-  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.beginPath();
+  ctx.strokeStyle='rgba(255,255,255,0.30)'; ctx.beginPath();
   [[0,0],[45,90],[0,127],[-45,90]].forEach(([a,d],i)=>{ const [x,y]=sprayMap(a,d); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
   ctx.closePath(); ctx.stroke();
   // field labels
