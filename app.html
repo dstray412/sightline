@@ -50,6 +50,28 @@
   .chip.active { color: #06131a; background: linear-gradient(90deg, var(--accent), #7fe9ff); border-color: transparent; }
   .chip:not(.active):hover { color: var(--text); border-color: var(--accent); }
 
+  /* Searchable selector (replaces the chip wall for long player/team lists) */
+  .picker { display: inline-flex; align-items: center; gap: 10px; min-width: 210px; max-width: 100%;
+    padding: 9px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13.5px;
+    color: #06131a; background: linear-gradient(90deg, var(--accent), #7fe9ff); border: 1px solid transparent; transition: .16s; }
+  .picker.sm { font-size: 12.5px; padding: 8px 13px; min-width: 180px; color: var(--text);
+    background: var(--panel); border-color: var(--line); }
+  .picker:hover { filter: brightness(1.04); }
+  .picker .picker-val { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker .picker-caret { opacity: .7; font-size: 10px; }
+  .picker-panel { position: fixed; z-index: 40; background: #1a1f2b; border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 16px 44px rgba(0,0,0,.5); padding: 8px; width: 240px; }
+  .picker-search { width: 100%; box-sizing: border-box; padding: 9px 12px; margin-bottom: 6px;
+    border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--text);
+    font: 14px ui-sans-serif, system-ui; outline: none; }
+  .picker-search:focus { border-color: var(--accent); }
+  .picker-list { max-height: 260px; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 2px; }
+  .picker-opt { text-align: left; padding: 8px 11px; border-radius: 7px; border: none; background: transparent;
+    color: var(--text); font: 600 13.5px ui-sans-serif, system-ui; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .picker-opt:hover { background: rgba(255,255,255,.07); }
+  .picker-opt.sel { color: #06131a; background: linear-gradient(90deg, var(--accent), #7fe9ff); }
+  .picker-empty { padding: 10px 11px; color: var(--muted); font-size: 13px; }
+
   .views { display: flex; gap: 6px; margin: 2px 0 4px; flex-wrap: wrap; }
   .viewbtn { padding: 7px 13px; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: 12.5px;
     background: transparent; border: 1px solid var(--line); color: var(--muted); transition: .15s; }
@@ -1493,11 +1515,50 @@ function chipData() {
   return e==='scorer' ? NBA_PLAYERS : e==='pitcher' ? MLB_PLAYERS : e==='hitter' ? MLB_HITTERS
        : e==='skater' ? NHL_SKATERS : e==='nflteam' ? NFL_TEAMS : NFL_QBS;
 }
+// Searchable dropdown for long name lists. Renders a button into `mount`; opens a
+// filtered, fixed-position panel (escapes the stage's overflow clip) on click.
+function makePicker(mount, { value, options, onPick, sm }) {
+  mount.innerHTML = `<button type="button" class="picker${sm?' sm':''}"><span class="picker-val">${value||'Select…'}</span><span class="picker-caret">▾</span></button>`;
+  const btn = mount.querySelector('.picker');
+  let panel = null;
+  function close(){ if(!panel) return; panel.remove(); panel=null;
+    document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', onKey);
+    window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); }
+  function outside(e){ if(panel && !panel.contains(e.target) && !btn.contains(e.target)) close(); }
+  function onKey(e){ if(e.key==='Escape') close(); }
+  function open(){
+    panel = document.createElement('div'); panel.className='picker-panel';
+    panel.innerHTML = `<input class="picker-search" type="text" placeholder="Search…" autocomplete="off" spellcheck="false"><div class="picker-list"></div>`;
+    document.body.appendChild(panel);
+    const r = btn.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 256)) + 'px';
+    panel.style.top = (r.bottom + 6) + 'px';
+    panel.style.width = Math.max(r.width, 220) + 'px';
+    const search = panel.querySelector('.picker-search'), list = panel.querySelector('.picker-list');
+    function draw(){
+      const q = search.value.trim().toLowerCase();
+      const items = options.filter(o => o.toLowerCase().includes(q));
+      list.innerHTML = items.length
+        ? items.map(o=>`<button type="button" class="picker-opt${o===value?' sel':''}" data-v="${o.replace(/"/g,'&quot;')}">${o}</button>`).join('')
+        : `<div class="picker-empty">No match</div>`;
+      list.querySelectorAll('.picker-opt').forEach(b=>b.onclick=()=>{ const v=b.dataset.v; close(); onPick(v); });
+    }
+    draw();
+    search.oninput = draw;
+    search.onkeydown = (e)=>{ if(e.key==='Enter'){ const f=list.querySelector('.picker-opt'); if(f){ const v=f.dataset.v; close(); onPick(v); } } };
+    setTimeout(()=>search.focus(), 0);
+    document.addEventListener('mousedown', outside, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+  }
+  btn.onclick = (e)=>{ e.stopPropagation(); panel ? close() : open(); };
+}
 function setChips() {
   const el = document.getElementById('chips');
   const names = Object.keys(chipData());
-  el.innerHTML = names.map(n=>`<button class="chip ${n===state.player?'active':''}" data-p="${n}">${n}</button>`).join('');
-  el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ state.player=c.dataset.p; setChips(); setSeasons(); setComparebar(); rebuild(); setInsight(); });
+  makePicker(el, { value: state.player, options: names,
+    onPick: (n)=>{ state.player=n; setChips(); setSeasons(); setComparebar(); rebuild(); setInsight(); } });
 }
 function setMatchup() {
   const el = document.getElementById('matchup');
@@ -1530,14 +1591,15 @@ function setComparebar() {
   if (state.compare && (!state.playerB || state.playerB===state.player || !players.includes(state.playerB)))
     state.playerB = players.find(n=>n!==state.player) || null;
   let html = `<button class="cmp-toggle ${state.compare?'active':''}" id="cmpToggle">⇄ Compare${state.compare?' ON':''}</button>`;
-  if (state.compare) html += `<span class="vslabel">vs</span>` +
-    players.filter(n=>n!==state.player).map(n=>`<button class="chip sm ${n===state.playerB?'active':''}" data-pb="${n}">${n}</button>`).join('');
+  if (state.compare) html += `<span class="vslabel">vs</span><span id="cmpPick"></span>`;
   if (state.compare && OVERLAY_VIEWS.has(state.view))
     html += `<button class="cmp-toggle ${state.overlay?'active':''}" id="ovToggle" style="margin-left:8px">▤ Overlay${state.overlay?' ON':''}</button>`;
   el.innerHTML = html;
   document.getElementById('cmpToggle').onclick = ()=>{ state.compare=!state.compare; setComparebar(); resize(); rebuild(); setInsight(); };
   const ov = document.getElementById('ovToggle'); if (ov) ov.onclick = ()=>{ state.overlay=!state.overlay; setComparebar(); resize(); rebuild(); setInsight(); };
-  el.querySelectorAll('[data-pb]').forEach(b=>b.onclick=()=>{ state.playerB=b.dataset.pb; setComparebar(); rebuild(); setInsight(); });
+  if (state.compare) makePicker(document.getElementById('cmpPick'),
+    { value: state.playerB, options: players.filter(n=>n!==state.player), sm: true,
+      onPick: (n)=>{ state.playerB=n; setComparebar(); rebuild(); setInsight(); } });
 }
 function setViews() {
   const el = document.getElementById('views');
