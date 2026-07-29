@@ -169,6 +169,7 @@
 <script src="mlb-data.js"></script>
 <script src="nba-data.js"></script>
 <script src="nfl-data.js"></script>
+<script src="nfl-teams-data.js"></script>
 <script src="nhl-data.js"></script>
 <script>
 // ---------- tiny deterministic RNG (stable layouts) ----------
@@ -337,6 +338,7 @@ const VIEW_META = {
   damage:    { sport:'mlb', sub:'Damage',            title:'Where he does his damage' },
   passmap:   { sport:'nfl', sub:'Passing Map',       title:'Where a QB throws it' },
   airyards:  { sport:'nfl', sub:'Air Yards',         title:'How deep he throws — and how often it connects' },
+  nflteams:  { sport:'nfl', sub:'Team Profile',      title:'How two teams stack up' },
   danger:    { sport:'nhl', sub:'Shot Danger',       title:"Where he's dangerous on the ice" },
   mix:       { sport:'nhl', sub:'Shot Mix',          title:'How dangerous his shots are' },
 };
@@ -344,7 +346,7 @@ const SPORT_VIEWS = { nba:['gravity','diet','range'], mlb:['arsenal','nasty','ev
 const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)', nfl:'P.Mahomes', nhl:'Connor McDavid' };
 
 // Which kind of player each view is about (chips + defaults follow this).
-const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter', passmap:'qb', airyards:'qb', danger:'skater', mix:'skater' };
+const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter', passmap:'qb', airyards:'qb', nflteams:'nflteam', danger:'skater', mix:'skater' };
 const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger', skater:'Connor McDavid' };
 
 let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', compare:false, playerB:null, overlay:false, items:[], t0:0, raf:0 };
@@ -879,7 +881,8 @@ function render(prog) {
   if (W<=0 || H<=0) return; // canvas not sized yet (init runs before first resize) — drawing now throws
   ctx.clearRect(0,0,W,H);
   if (state.compare && state.playerB && state.playerB!==state.player) {
-    if (state.overlay && OVERLAY_VIEWS.has(state.view)) drawOverlay(prog);
+    if (VIEWS[state.view].selfCompare) drawCurrent(prog);          // view overlays both itself (e.g. radar)
+    else if (state.overlay && OVERLAY_VIEWS.has(state.view)) drawOverlay(prog);
     else renderCompareBody(prog);
   } else if (!viewHasData()) {
     drawEmptyState();
@@ -996,7 +999,7 @@ function keyStat(player) {
 }
 function setInsight() {
   const el = document.getElementById('insight'), v = state.view;
-  if (state.compare && state.playerB && state.playerB!==state.player) {
+  if (state.compare && state.playerB && state.playerB!==state.player && !VIEWS[v].selfCompare) {
     const a = keyStat(state.player), b = keyStat(state.playerB), diff = a.val - b.val;
     const delta = diff===0 ? `Dead even on ${a.label.replace(/^of /,'')}.`
       : `<b>${state.player} ${diff>0?'+':'−'}${Math.abs(diff)}${a.unit}</b>.`;
@@ -1112,6 +1115,62 @@ function drawDanger(prog){
 }
 
 // ==================================================================
+// NFL Team Profile — a 6-axis radar of league-relative ratings (0-100). Compare
+// overlays two teams on one radar. Data (fetch-nfl.mjs): teams keyed by nickname,
+// seasons[year].ratings = {Passing,Rushing,Pass D,Rush D,Big plays,Takeaways}.
+// ==================================================================
+const NFL_TEAMS = {};
+const RADAR_AXES = ["Passing","Rushing","Pass D","Rush D","Big plays","Takeaways"];
+if (window.SIGHTLINE_NFLTEAMS && window.SIGHTLINE_NFLTEAMS.teams && Object.keys(window.SIGHTLINE_NFLTEAMS.teams).length) {
+  for (const t of Object.values(window.SIGHTLINE_NFLTEAMS.teams)) NFL_TEAMS[t.name] = { seasons: t.seasons };
+  window.__REAL_NFLTEAMS = true;
+  ENTITY_DEFAULT.nflteam = NFL_TEAMS['Chiefs'] ? 'Chiefs' : Object.keys(NFL_TEAMS)[0];
+  if (!SPORT_VIEWS.nfl.includes('nflteams')) SPORT_VIEWS.nfl.push('nflteams');
+}
+function nflTeamSeasons(name){ const t=NFL_TEAMS[name]; return t && t.seasons ? Object.keys(t.seasons).sort() : null; }
+function nflTeamData(name){ const t=NFL_TEAMS[name]; if(!t||!t.seasons) return null;
+  const ys=Object.keys(t.seasons).sort(); const y=ys.includes(state.season)?state.season:ys[ys.length-1]; return t.seasons[y]; }
+function buildTeamRadar(name){ const d=nflTeamData(name); if(!d||!d.ratings) return [];
+  return RADAR_AXES.map(ax=>({ axis:ax, val: d.ratings[ax] ?? 50 })); }
+function drawRadar(prog){
+  const items = state.items; if(!items.length) return;
+  const compare = state.compare && state.playerB && state.playerB!==state.player;
+  const cx=W/2, cy=H*0.54, R=Math.min(W*0.46, H*0.42);
+  const N=RADAR_AXES.length, ang=i=>-Math.PI/2 + i*(2*Math.PI/N);
+  ctx.save();
+  // grid rings
+  ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1;
+  for (let g=1; g<=4; g++){ const rad=R*g/4; ctx.beginPath();
+    for(let i=0;i<=N;i++){ const a=ang(i%N), x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad; i?ctx.lineTo(x,y):ctx.moveTo(x,y); } ctx.closePath(); ctx.stroke(); }
+  // spokes + axis labels
+  ctx.font="600 12.5px 'Space Grotesk', ui-sans-serif, system-ui";
+  for (let i=0;i<N;i++){ const a=ang(i), x=cx+Math.cos(a)*R, y=cy+Math.sin(a)*R;
+    ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.stroke();
+    const lx=cx+Math.cos(a)*(R+20), ly=cy+Math.sin(a)*(R+20);
+    ctx.fillStyle='rgba(255,255,255,0.62)';
+    ctx.textAlign = Math.abs(Math.cos(a))<0.3?'center':(Math.cos(a)>0?'left':'right');
+    ctx.textBaseline = Math.abs(Math.sin(a))<0.35?'middle':(Math.sin(a)>0?'top':'bottom');
+    ctx.fillText(RADAR_AXES[i], lx, ly);
+  }
+  const shapes = [{ name:state.player, data:items, col: compare?A_COL:'#38e1ff', store:true }];
+  if (compare) shapes.push({ name:state.playerB, data:buildTeamRadar(state.playerB), col:B_COL });
+  for (const s of shapes){
+    ctx.beginPath();
+    s.data.forEach((p,i)=>{ const a=ang(i), rad=(p.val/100)*R*prog, x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
+      if(s.store){ p._x=x; p._y=y; } i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.closePath();
+    ctx.fillStyle=toRGBA(s.col,0.16); ctx.fill();
+    ctx.strokeStyle=s.col; ctx.lineWidth=2; ctx.shadowColor=s.col; ctx.shadowBlur=10; ctx.stroke(); ctx.shadowBlur=0;
+    s.data.forEach((p,i)=>{ const a=ang(i), rad=(p.val/100)*R*prog, x=cx+Math.cos(a)*rad, y=cy+Math.sin(a)*rad;
+      ctx.fillStyle=s.col; ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill(); });
+  }
+  // team legend (top-left)
+  ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.font="700 14px 'Space Grotesk', ui-sans-serif, system-ui";
+  let ly=20; for (const s of shapes){ ctx.fillStyle=s.col; rr(16,ly-6,12,12,3); ctx.fill(); ctx.fillStyle='#eef1f7'; ctx.fillText(s.name, 34, ly); ly+=22; }
+  ctx.restore();
+}
+
+// ==================================================================
 // VIEW REGISTRY — one entry per view consolidates the per-view code that
 // used to be smeared across computeItems / drawCurrent / setInsight /
 // setLegend / inspectAt / resize / setSeasons. Adding a view = one entry
@@ -1160,6 +1219,38 @@ const VIEWS = {
     hit: (mx,my) => {
       for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0];
         if (mx>=x&&mx<=x+w&&my>=y&&my<=y+h){ return { html:`<b>${Math.round(it.freq*100)}%</b> of his shots · scores ${it.shootPct}%`, tx:mx, ty:y+h/2 }; } }
+      return null;
+    },
+  },
+  nflteams: {
+    build: () => buildTeamRadar(state.player),
+    draw: drawRadar,
+    selfCompare: true,
+    aspD: 0.72, aspM: 1.0,
+    seasons: () => nflTeamSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">each spoke = a 0–100 rating vs the league</div>
+      <div class="item" style="color:var(--muted)">bigger shape = better · ⇄ Compare overlays a 2nd team</div>`;
+    },
+    insight: (el) => {
+      const a = buildTeamRadar(state.player);
+      const compare = state.compare && state.playerB && state.playerB!==state.player;
+      if (!a.length) { el.innerHTML = `No profile for this team yet.`; return; }
+      if (!compare) {
+        const best = [...a].sort((x,y)=>y.val-x.val)[0], worst = [...a].sort((x,y)=>x.val-y.val)[0];
+        el.innerHTML = `<span class="k">${state.player}</span> profiled against the league${state.season?` in ${state.season}`:''} — each spoke is a 0–100 rating vs all 32 teams. ` +
+          `Their strength is <b>${best.axis}</b> (${best.val}); their weak spot is <b>${worst.axis}</b> (${worst.val}). Hit <b>⇄ Compare</b> to overlay another team.`;
+      } else {
+        const b = buildTeamRadar(state.playerB);
+        let gap = {axis:a[0].axis, d:0};
+        a.forEach((p,i)=>{ const d=p.val-b[i].val; if(Math.abs(d)>Math.abs(gap.d)) gap={axis:p.axis, d, av:p.val, bv:b[i].val}; });
+        el.innerHTML = `<span class="k">${state.player}</span> vs <span class="k">${state.playerB}</span>${state.season?`, ${state.season}`:''} — the bigger shape is the better team on that axis. ` +
+          `Biggest gap: <b>${gap.d>0?state.player:state.playerB}</b> on <b>${gap.axis}</b> (${gap.av} vs ${gap.bv}).`;
+      }
+    },
+    hit: (mx,my) => {
+      for (const p of state.items){ const dx=(p._x||0)-mx, dy=(p._y||0)-my;
+        if (Math.sqrt(dx*dx+dy*dy) < 14){ return { html:`<b>${p.axis}</b> · ${p.val}/100`, tx:p._x, ty:p._y }; } }
       return null;
     },
   },
@@ -1393,7 +1484,7 @@ function setLegend() {
 function chipData() {
   const e = ENTITY[state.view];
   return e==='scorer' ? NBA_PLAYERS : e==='pitcher' ? MLB_PLAYERS : e==='hitter' ? MLB_HITTERS
-       : e==='skater' ? NHL_SKATERS : NFL_QBS;
+       : e==='skater' ? NHL_SKATERS : e==='nflteam' ? NFL_TEAMS : NFL_QBS;
 }
 function setChips() {
   const el = document.getElementById('chips');
