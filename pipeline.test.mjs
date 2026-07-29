@@ -6,7 +6,7 @@ import {
   hitAngle, outcomeOf, pitchBreak,
   nbaShotCoord, HOOP_Y,
   nflOutcome, nflLane,
-  unzipSingle, isGoal,
+  unzipSingle, isGoal, percentileRank,
 } from "./pipeline.mjs";
 
 test("splitCsv: plain, quoted-with-comma, escaped quotes, empty fields", () => {
@@ -96,4 +96,12 @@ test("isGoal: only GOAL scores", () => {
   assert.equal(isGoal("GOAL"), true);
   assert.equal(isGoal("SHOT"), false);
   assert.equal(isGoal("MISS"), false);
+});
+
+test("percentileRank: max=100, min=0, scales in between", () => {
+  const all = [0,1,2,3,4,5,6,7,8,9]; // n=10
+  assert.equal(percentileRank(9, all), 100);            // strict max
+  assert.equal(percentileRank(0, all), 0);              // min
+  assert.equal(percentileRank(5, all), Math.round(100*5/9)); // 5 below -> 56
+  assert.equal(percentileRank(42, [42]), 50);           // single value -> neutral
 });

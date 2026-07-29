@@ -96,3 +96,12 @@ export function nflLane(loc){ return loc==="left" ? -1 : loc==="right" ? 1 : 0; 
 // ===================== NHL transforms =====================
 // MoneyPuck `event` -> did this shot attempt score? (GOAL vs SHOT-on-net vs MISS)
 export function isGoal(event){ return event === "GOAL"; }
+
+// ===================== shared: rating =====================
+// Percentile rank (0-100) of `v` within `all` = share of values strictly below it.
+// Used to rate a team on each radar axis against the rest of the league that season.
+export function percentileRank(v, all){
+  if (!all || all.length <= 1) return 50;
+  const below = all.filter(x => x < v).length;
+  return Math.round(100 * below / (all.length - 1));
+}
