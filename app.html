@@ -1137,7 +1137,7 @@ function drawRadar(prog){
   const compare = state.compare && state.playerB && state.playerB!==state.player;
   // size the radar so ALL axis labels fit: reserve vertical room (top/bottom labels)
   // AND horizontal room (the left/right labels sit beyond cos(30°)*R).
-  const cx=W/2, topPad=54, botPad=42, sidePad=72;
+  const cx=W/2, topPad=50, botPad=66, sidePad=72;
   const Rw = (W/2 - sidePad) / Math.cos(Math.PI/6) - 22; // widest side axes are at ±30° off horizontal
   const R=Math.max(70, Math.min((H-topPad-botPad)/2, Rw)), cy=topPad+R;
   const N=RADAR_AXES.length, ang=i=>-Math.PI/2 + i*(2*Math.PI/N);
