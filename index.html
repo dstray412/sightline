@@ -338,12 +338,13 @@ const VIEW_META = {
   passmap:   { sport:'nfl', sub:'Passing Map',       title:'Where a QB throws it' },
   airyards:  { sport:'nfl', sub:'Air Yards',         title:'How deep he throws — and how often it connects' },
   danger:    { sport:'nhl', sub:'Shot Danger',       title:"Where he's dangerous on the ice" },
+  mix:       { sport:'nhl', sub:'Shot Mix',          title:'How dangerous his shots are' },
 };
-const SPORT_VIEWS = { nba:['gravity','diet','range'], mlb:['arsenal','nasty','evolution','spray','damage'], nfl:['passmap','airyards'], nhl:['danger'] };
+const SPORT_VIEWS = { nba:['gravity','diet','range'], mlb:['arsenal','nasty','evolution','spray','damage'], nfl:['passmap','airyards'], nhl:['danger','mix'] };
 const DEFAULT_PLAYER = { nba:'The Sniper', mlb:'The Flamethrower (RHP)', nfl:'P.Mahomes', nhl:'Connor McDavid' };
 
 // Which kind of player each view is about (chips + defaults follow this).
-const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter', passmap:'qb', airyards:'qb', danger:'skater' };
+const ENTITY = { gravity:'scorer', diet:'scorer', range:'scorer', arsenal:'pitcher', nasty:'pitcher', evolution:'pitcher', spray:'hitter', damage:'hitter', passmap:'qb', airyards:'qb', danger:'skater', mix:'skater' };
 const ENTITY_DEFAULT = { scorer:'The Sniper', pitcher:'The Flamethrower (RHP)', hitter:'The Pull Slugger', skater:'Connor McDavid' };
 
 let state = { view:'gravity', player:'The Sniper', vsPitcher:'The Flamethrower (RHP)', season:'2025', compare:false, playerB:null, overlay:false, items:[], t0:0, raf:0 };
@@ -862,7 +863,7 @@ function drawOverlay(prog) {
 function viewHasData(){
   const it = state.items;
   if (!it || !it.length) return false;
-  if (state.view==='diet' || state.view==='range' || state.view==='airyards') return it.some(b=>b.freq>0);
+  if (state.view==='diet' || state.view==='range' || state.view==='airyards' || state.view==='mix') return it.some(b=>b.freq>0);
   if (state.view==='damage') return it.some(f=>f.total>0);
   return true;
 }
@@ -1030,6 +1031,24 @@ function buildNHL(name){
   const d = nhlData(name); if(!d) return [];
   return d.shots.map(s=>({ x:s[0], y:s[1], xg:s[2], goal:s[3] }));
 }
+// Shot Mix: bucket a skater's shots by danger tier (xG) -> diet-shaped bars (reuses drawDiet).
+// `value` encodes the danger tier so drawDiet's heat color/glow read as danger, not points.
+function buildShotMix(name){
+  const d = nhlData(name); if(!d) return [];
+  const zones = [
+    { label:'High-danger', lo:0.15, hi:1.01, t:0.92 },
+    { label:'Medium',      lo:0.06, hi:0.15, t:0.55 },
+    { label:'Low-danger',  lo:0.02, hi:0.06, t:0.28 },
+    { label:'Long range',  lo:0,    hi:0.02, t:0.06 },
+  ];
+  const total = d.shots.length || 1;
+  return zones.map(z=>{
+    const inZone = d.shots.filter(s=>s[2]>=z.lo && s[2]<z.hi);
+    const n = inZone.length, goals = inZone.reduce((g,s)=>g+s[3],0);
+    const value = 0.7 + z.t*0.75; // maps through drawDiet's (value-0.7)/0.75 back to the danger tier t
+    return { label:z.label, freq:n/total, value, shootPct: n?Math.round(goals/n*100):0, color: ppsColor(value) };
+  });
+}
 // Offensive-zone rink model: goal at bottom-center (x=89), zone fanning up to the blue line.
 function rinkGeom(){
   const pad=24, WIDE=85, DEEP=72; // rink is 85ft wide; we show ~72ft deep (behind net -> blue line)
@@ -1120,6 +1139,27 @@ const VIEWS = {
       let best=null, bd=1e9;
       for (const p of state.items){ const dx=p.px-mx, dy=p.py-my, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
       if (best && bd<300){ return { html:`<b>${best.goal?'GOAL':'Shot'}</b> · ${Math.round(best.xg*100)}% goal chance`, tx:best.px, ty:best.py }; }
+      return null;
+    },
+  },
+  mix: {
+    build: () => buildShotMix(state.player),
+    draw: drawDiet,
+    aspD: 0.5, aspM: 0.95,
+    seasons: () => nhlSeasons(state.player),
+    legend: (el) => {
+      el.innerHTML = `<div class="item">bar length = share of his shots</div>
+      <div class="item">low danger <span class="grad"></span> high danger</div>`;
+    },
+    insight: (el) => {
+      const z = state.items, hd = z[0] || {freq:0,shootPct:0};
+      el.innerHTML = `Where <span class="k">${state.player}</span>'s shots come from, by how dangerous they are. ` +
+        `The <b>longer the bar</b>, the more of his shots from that zone; <b style="color:#c33a46">redder</b> = more dangerous. ` +
+        `<b>${Math.round(hd.freq*100)}%</b> of his shots are high-danger, and he scores on <b>${hd.shootPct}%</b> of them.`;
+    },
+    hit: (mx,my) => {
+      for (const it of state.items){ const [x,y,w,h]=it._rect||[0,0,0,0];
+        if (mx>=x&&mx<=x+w&&my>=y&&my<=y+h){ return { html:`<b>${Math.round(it.freq*100)}%</b> of his shots · scores ${it.shootPct}%`, tx:mx, ty:y+h/2 }; } }
       return null;
     },
   },
