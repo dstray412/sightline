@@ -41,7 +41,8 @@
   .toprow { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
   .subtitle { font-family: var(--display); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
   .viztitle { font-family: var(--display); font-size: 24px; font-weight: 700; letter-spacing: -.01em; margin: 2px 0 0; }
-  .chips { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chips { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap;
+    max-height: 132px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; } /* cap the roster wall; scroll for more */
   .chip { padding: 8px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px;
     background: var(--panel); border: 1px solid var(--line); color: var(--muted); transition: .16s; }
   .chip.active { color: #06131a; background: linear-gradient(90deg, var(--accent), #7fe9ff); border-color: transparent; }
@@ -55,7 +56,8 @@
   .viewbtn:not(.active):hover { color: var(--text); }
 
   .matchup, .seasons { display: none; align-items: center; gap: 6px; margin: 2px 0 6px; flex-wrap: wrap; }
-  .comparebar { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; flex-wrap: wrap; }
+  .comparebar { display: flex; align-items: flex-start; gap: 6px; margin: 2px 0 6px; flex-wrap: wrap;
+    max-height: 84px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; } /* cap the vs-picker wall */
   .vslabel { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-right: 4px; }
   .chip.sm { padding: 5px 11px; font-size: 12px; }
   .cmp-toggle { padding: 6px 13px; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: 12.5px;
@@ -105,12 +107,13 @@
     .toprow { gap: 8px; }
     .subtitle { font-size: 11px; letter-spacing: .12em; }
     .viztitle { font-size: 18px; }
-    .chips { margin-left: 0; width: 100%; margin-top: 2px; }
+    .chips { margin-left: 0; width: 100%; margin-top: 2px; max-height: none; overflow: visible; }
     .chip { padding: 7px 12px; font-size: 12.5px; }
     .chip.sm { padding: 5px 10px; font-size: 11.5px; }
     .views { gap: 5px; }
     .viewbtn { padding: 7px 11px; font-size: 12px; }
     .cmp-toggle { padding: 6px 11px; font-size: 12px; }
+    .comparebar { max-height: none; overflow: visible; align-items: center; }
     .chip, .viewbtn, .sport, .cmp-toggle { min-height: 44px; } /* 44px touch minimum on phones */
     .insight { margin-top: 12px; padding: 13px 15px; font-size: 15px; }
     .legend { margin-top: 12px; gap: 9px 12px; font-size: 12.5px; }
@@ -970,7 +973,15 @@ function resize() {
   const holderW = canvas.parentElement.clientWidth;
   // Portrait phones get taller aspect ratios so charts don't get squished into a thin strip.
   const asp = (holderW < 560 ? VIEWS[state.view].aspM : VIEWS[state.view].aspD);
-  W = holderW; H = Math.round(holderW*asp);
+  let Hpx = Math.round(holderW*asp);
+  // Desktop only: fit the viz to the viewport so you don't scroll to see it + its read.
+  // (Phones scroll naturally, so the taller portrait aspect stands there.)
+  if (holderW >= 560) {
+    const top = canvas.getBoundingClientRect().top;    // canvas top edge (set by the controls above it)
+    const avail = window.innerHeight - top - 138;       // reserve room for THE READ (taller in compare) below
+    Hpx = Math.min(Hpx, Math.max(160, avail));          // fit the viewport; keep a usable minimum
+  }
+  W = holderW; H = Hpx;
   canvas.width = W*DPR; canvas.height = H*DPR; canvas.style.height = H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
   computeItems(); // recompute for the CURRENT view at the new width — never render another view's stale items
@@ -1495,6 +1506,8 @@ function setChips() {
   const names = Object.keys(chipData());
   el.innerHTML = names.map(n=>`<button class="chip ${n===state.player?'active':''}" data-p="${n}">${n}</button>`).join('');
   el.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{ state.player=c.dataset.p; setChips(); setSeasons(); setComparebar(); rebuild(); setInsight(); });
+  const act = el.querySelector('.chip.active'); // keep the selected chip visible inside the capped list
+  if (act && el.scrollHeight > el.clientHeight + 4) el.scrollTop = Math.max(0, act.offsetTop - el.clientHeight/2 + act.offsetHeight/2);
 }
 function setMatchup() {
   const el = document.getElementById('matchup');
