@@ -1135,7 +1135,11 @@ function buildTeamRadar(name){ const d=nflTeamData(name); if(!d||!d.ratings) ret
 function drawRadar(prog){
   const items = state.items; if(!items.length) return;
   const compare = state.compare && state.playerB && state.playerB!==state.player;
-  const cx=W/2, cy=H*0.54, R=Math.min(W*0.46, H*0.42);
+  // size the radar so ALL axis labels fit: reserve vertical room (top/bottom labels)
+  // AND horizontal room (the left/right labels sit beyond cos(30°)*R).
+  const cx=W/2, topPad=54, botPad=42, sidePad=72;
+  const Rw = (W/2 - sidePad) / Math.cos(Math.PI/6) - 22; // widest side axes are at ±30° off horizontal
+  const R=Math.max(70, Math.min((H-topPad-botPad)/2, Rw)), cy=topPad+R;
   const N=RADAR_AXES.length, ang=i=>-Math.PI/2 + i*(2*Math.PI/N);
   ctx.save();
   // grid rings
@@ -1226,7 +1230,7 @@ const VIEWS = {
     build: () => buildTeamRadar(state.player),
     draw: drawRadar,
     selfCompare: true,
-    aspD: 0.72, aspM: 1.0,
+    aspD: 0.78, aspM: 1.0,
     seasons: () => nflTeamSeasons(state.player),
     legend: (el) => {
       el.innerHTML = `<div class="item">each spoke = a 0–100 rating vs the league</div>
