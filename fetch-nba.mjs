@@ -16,6 +16,9 @@ const PLAYERS = [
   "Stephen Curry", "Giannis Antetokounmpo", "Shai Gilgeous-Alexander", "Anthony Edwards",
   "Jayson Tatum", "LeBron James", "Nikola Jokić", "Luka Dončić", "Kevin Durant",
   "Devin Booker", "Jalen Brunson", "Donovan Mitchell",
+  "Joel Embiid", "Ja Morant", "Damian Lillard", "Kawhi Leonard", "Jimmy Butler",
+  "Trae Young", "De'Aaron Fox", "Paolo Banchero", "Victor Wembanyama",
+  "Tyrese Haliburton", "Jaylen Brown", "Kyrie Irving",
 ];
 
 // ZONE_AREA (as NBA_ZONE_AREA), HOOP_Y, splitCsv, sample, loadExisting, mergeSeasons, nbaShotCoord: from ./pipeline.mjs

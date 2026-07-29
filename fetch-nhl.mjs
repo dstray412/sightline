@@ -17,6 +17,9 @@ const SKATERS = [
   "Connor McDavid", "Auston Matthews", "Nathan MacKinnon", "Leon Draisaitl", "David Pastrnak",
   "Nikita Kucherov", "Cale Makar", "Sidney Crosby", "Mikko Rantanen", "Matthew Tkachuk",
   "Artemi Panarin", "Jack Hughes",
+  "Mitch Marner", "Sebastian Aho", "Brayden Point", "Zach Hyman", "Mika Zibanejad",
+  "Kirill Kaprizov", "Jason Robertson", "Jack Eichel", "Elias Pettersson",
+  "William Nylander", "Tage Thompson", "Kyle Connor",
 ];
 
 function aggregateSeason(csv, want){

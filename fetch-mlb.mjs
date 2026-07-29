@@ -21,6 +21,14 @@ const PITCHERS = [
   { name: "Corbin Burnes", id: 669203 },
   { name: "Logan Webb",    id: 657277 },
   { name: "Blake Snell",   id: 605483 },
+  { name: "Jacob deGrom",     id: 594798 },
+  { name: "Spencer Strider",  id: 675911 },
+  { name: "Tyler Glasnow",    id: 607192 },
+  { name: "Aaron Nola",       id: 605400 },
+  { name: "Zac Gallen",       id: 668678 },
+  { name: "Luis Castillo",    id: 622491 },
+  { name: "Framber Valdez",   id: 664285 },
+  { name: "Kevin Gausman",    id: 592332 },
 ];
 
 // Hitters for the Spray Chart (per season; split by pitcher handedness).
@@ -35,6 +43,14 @@ const HITTERS = [
   { name: "Mookie Betts",    id: 605141 },
   { name: "José Ramírez",    id: 608070 },
   { name: "Bryce Harper",    id: 547180 },
+  { name: "Mike Trout",             id: 545361 },
+  { name: "Yordan Alvarez",         id: 670541 },
+  { name: "Vladimir Guerrero Jr.",  id: 665489 },
+  { name: "Ronald Acuña Jr.",       id: 660670 },
+  { name: "Rafael Devers",          id: 646240 },
+  { name: "Corey Seager",           id: 608369 },
+  { name: "Kyle Tucker",            id: 663656 },
+  { name: "Gunnar Henderson",       id: 683002 },
 ];
 
 // pitch_type code -> display name + color (matches the viz palette)

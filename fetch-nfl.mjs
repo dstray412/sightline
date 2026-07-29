@@ -11,7 +11,8 @@ const REFRESH = process.argv.includes("--refresh");
 // NFL season spans Sep–Feb; before September the "current" season is last year.
 const CURRENT_SEASON = new Date().getFullYear() - (new Date().getMonth() < 8 ? 1 : 0);
 
-const QBS = ["P.Mahomes","J.Allen","L.Jackson","J.Burrow","J.Goff","C.Stroud","J.Herbert","M.Stafford"];
+const QBS = ["P.Mahomes","J.Allen","L.Jackson","J.Burrow","J.Goff","C.Stroud","J.Herbert","M.Stafford",
+  "J.Hurts","D.Prescott","T.Tagovailoa","T.Lawrence","J.Love","B.Purdy","J.Daniels","C.Williams","B.Nix","K.Murray","G.Smith"];
 
 // Air-yards depth buckets for the "Air Yards" view.
 const BUCKETS = [
