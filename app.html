@@ -240,7 +240,7 @@ function nbaToPx(x, y) {
   return [ pad + ((x+25)/50)*cw, H - pad - (y/40)*ch ];
 }
 function drawCourt() {
-  ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.26)'; ctx.lineWidth = 1.5;
+  ctx.save(); ctx.strokeStyle = 'rgba(255,255,255,0.42)'; ctx.lineWidth = 1.5;
   const [bx,by] = nbaToPx(0,0);
   const unit = (W-48)/50; // px per foot (x)
   // baseline
@@ -466,12 +466,12 @@ function drawField(){
   // outfield fence
   ctx.beginPath();
   for (let a=-45;a<=45;a+=2){ const [x,y]=sprayMap(a,fenceAt(a)); a===-45?ctx.moveTo(x,y):ctx.lineTo(x,y); }
-  ctx.strokeStyle='rgba(255,255,255,0.30)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.46)'; ctx.lineWidth=1.75; ctx.stroke();
   // foul lines
-  ctx.strokeStyle='rgba(255,255,255,0.38)';
+  ctx.strokeStyle='rgba(255,255,255,0.55)';
   [-45,45].forEach(a=>{ const [x,y]=sprayMap(a,fenceAt(a)); ctx.beginPath(); ctx.moveTo(cx,hy); ctx.lineTo(x,y); ctx.stroke(); });
   // infield diamond
-  ctx.strokeStyle='rgba(255,255,255,0.30)'; ctx.beginPath();
+  ctx.strokeStyle='rgba(255,255,255,0.46)'; ctx.beginPath();
   [[0,0],[45,90],[0,127],[-45,90]].forEach(([a,d],i)=>{ const [x,y]=sprayMap(a,d); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
   ctx.closePath(); ctx.stroke();
   // field labels
